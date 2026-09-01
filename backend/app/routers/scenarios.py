@@ -136,6 +136,14 @@ def approve_scenario(
     )
     
     if payload.status == "APPROVED":
+        # Auto-supersede unapproved sibling scenarios for the same tariff event
+        db.query(models.Scenario).filter(
+            models.Scenario.tariff_event_id == updated_scen.tariff_event_id,
+            models.Scenario.id != scenario_id,
+            models.Scenario.status == "PENDING_REVIEW"
+        ).update({"status": "SUPERSEDED"}, synchronize_session=False)
+        db.commit()
+
         # 2. Trigger Simulation
         sim_data = run_scenario_simulation(db, updated_scen)
         crud.create_simulation_result(
@@ -174,6 +182,21 @@ def approve_scenario(
                 )
 
     return updated_scen
+
+
+@router.post("/clear-pending")
+def clear_pending_scenarios(
+    current_user: models.User = Depends(auth.require_buyer),
+    db: Session = Depends(get_db)
+):
+    """
+    Clear pending candidate scenarios after a mitigation decision has been executed,
+    allowing the buyer to start a clean optimization run for the next disruption.
+    """
+    db.query(models.Scenario).filter(models.Scenario.status == "PENDING_REVIEW").update({"status": "SUPERSEDED"}, synchronize_session=False)
+    db.commit()
+    return {"message": "Pending scenarios cleared"}
+
 
 # --- SIMULATION ENDPOINTS ---
 

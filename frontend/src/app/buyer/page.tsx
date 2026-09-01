@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Shield, AlertTriangle, Users, Settings, Database, Globe,
-  TrendingUp, FileText, CheckCircle, XCircle, RefreshCw, 
+  TrendingUp, FileText, CheckCircle, XCircle, RefreshCw, RotateCcw,
   Plus, Play, Info, ArrowRight, UserCheck, Eye, LogOut, Link, Unlink
 } from "lucide-react";
 
@@ -248,6 +248,24 @@ export default function BuyerDashboard() {
       loadSimulationResult(scenId, token);
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  // Clear Scenario Workspace for New Mitigation
+  const handleClearScenarioWorkspace = async () => {
+    if (!token) return;
+    setError("");
+    setSuccess("");
+    try {
+      await fetch("http://localhost:8000/api/scenarios/clear-pending", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setGenScenarioParams({ event_id: 1, product_id: "", demand_qty: 1000 });
+      await loadAllData(token);
+      setSuccess("Mitigation workspace cleared. Select a disruption incident to run a new scenario.");
+    } catch (err: any) {
+      setError("Failed to clear scenario workspace: " + err.message);
     }
   };
 
@@ -775,7 +793,17 @@ export default function BuyerDashboard() {
 
               {/* Scenarios List */}
               <div className="lg:col-span-2 bg-white border border-slate-200 rounded shadow-sm p-6">
-                <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Recommended Recovery Scenarios</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-bold uppercase tracking-wider text-slate-500">Recommended Recovery Scenarios</h3>
+                  {scenarios.length > 0 && (
+                    <button
+                      onClick={handleClearScenarioWorkspace}
+                      className="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1 rounded transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Start New Mitigation / Reset Workspace
+                    </button>
+                  )}
+                </div>
                 
                 <div className="space-y-4">
                   {scenarios.map((s) => (
@@ -837,15 +865,29 @@ export default function BuyerDashboard() {
                           <button
                             onClick={() => handleApproveScenario(s.id)}
                             disabled={s.feasibility === "INFEASIBLE"}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-3 py-1.5 rounded transition-colors disabled:opacity-50"
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-3.5 py-1.5 rounded transition-colors disabled:opacity-50 shadow-sm"
                           >
                             Approve Scenario
                           </button>
                         </div>
+                      ) : s.status === "SUPERSEDED" ? (
+                        <div className="mt-4 flex justify-between items-center text-xs font-semibold text-slate-400">
+                          <span className="bg-slate-100 px-2.5 py-1 rounded border border-slate-200">SUPERSEDED BY APPROVED PLAN</span>
+                        </div>
                       ) : (
-                        <div className="mt-4 flex justify-end text-sm font-bold uppercase tracking-wider text-emerald-600 space-x-1 items-center">
-                          <CheckCircle className="h-4 w-4" />
-                          <span>Approved & Executed</span>
+                        <div className="mt-4 flex flex-wrap justify-between items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-500">Decision Executed into System State & SAP</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                              <CheckCircle className="h-4 w-4 text-emerald-600" /> Approved & Executed
+                            </span>
+                            <button
+                              onClick={handleClearScenarioWorkspace}
+                              className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded transition-colors flex items-center gap-1"
+                            >
+                              <RotateCcw className="h-3 w-3" /> Start New Mitigation
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
