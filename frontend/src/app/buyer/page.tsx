@@ -79,11 +79,40 @@ export default function BuyerDashboard() {
       
       // Fetch Suppliers
       const supRes = await fetch("http://localhost:8000/api/suppliers", { headers });
-      if (supRes.ok) setSuppliers(await supRes.json());
+      if (supRes.status === 401) {
+        localStorage.clear();
+        router.replace("/login");
+        return;
+      }
+      let loadedSuppliers: any[] = [];
+      if (supRes.ok) {
+        loadedSuppliers = await supRes.json();
+        setSuppliers(loadedSuppliers);
+      }
 
       // Fetch Tariff Events
       const tarRes = await fetch("http://localhost:8000/api/tariffs", { headers });
-      if (tarRes.ok) setTariffs(await tarRes.json());
+      if (tarRes.status === 401) {
+        localStorage.clear();
+        router.replace("/login");
+        return;
+      }
+      let loadedTariffs: any[] = [];
+      if (tarRes.ok) {
+        loadedTariffs = await tarRes.json();
+        setTariffs(loadedTariffs);
+      }
+
+      // If database is empty, automatically trigger system seed and reload
+      if (loadedSuppliers.length === 0 && loadedTariffs.length === 0) {
+        const seedRes = await fetch("http://localhost:8000/api/system/seed", { method: "POST" });
+        if (seedRes.ok) {
+          const sRes2 = await fetch("http://localhost:8000/api/suppliers", { headers });
+          if (sRes2.ok) setSuppliers(await sRes2.json());
+          const tRes2 = await fetch("http://localhost:8000/api/tariffs", { headers });
+          if (tRes2.ok) setTariffs(await tRes2.json());
+        }
+      }
 
       // Fetch Confirmations
       const confRes = await fetch("http://localhost:8000/api/tariffs/confirmations/all", { headers });
@@ -414,10 +443,10 @@ export default function BuyerDashboard() {
               {/* Stats Card Grid */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {[
-                  { label: "Active Tariff Incidents", val: tariffs.filter(t => t.status === "CONFIRMED").length, status: "WARNING" },
-                  { label: "Pending Supplier Onboardings", val: suppliers.filter(s => s.onboarding_status === "REGISTERED" || s.onboarding_status === "PENDING_VERIFICATION").length, status: "INFO" },
+                  { label: "Active Tariff Incidents", val: tariffs.filter(t => t.status === "CONFIRMED" || t.status === "DETECTED").length, status: "WARNING" },
+                  { label: "Pending Supplier Onboardings", val: suppliers.filter(s => s.onboarding_status === "REGISTERED" || s.onboarding_status === "PENDING_VERIFICATION" || s.onboarding_status === "PENDING").length, status: "INFO" },
                   { label: "Total Monitored Suppliers", val: suppliers.length, status: "SUCCESS" },
-                  { label: "Flagged Risk Exposure Forms", val: confirmations.filter(c => c.status === "POTENTIALLY_AFFECTED").length, status: "DANGER" }
+                  { label: "Flagged Risk Exposure Forms", val: confirmations.filter(c => c.status === "POTENTIALLY_AFFECTED" || c.status === "CONFIRMED_AFFECTED").length, status: "DANGER" }
                 ].map((s, i) => (
                   <div key={i} className="bg-white rounded border border-slate-250 p-5 shadow-sm">
                     <span className="text-sm font-semibold uppercase tracking-wider text-slate-400 block">{s.label}</span>
