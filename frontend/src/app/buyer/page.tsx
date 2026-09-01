@@ -29,9 +29,14 @@ export default function BuyerDashboard() {
   const [simulation, setSimulation] = useState<any | null>(null);
   const [routes, setRoutes] = useState<any[]>([]);
   const [tradeSources, setTradeSources] = useState<any[]>([]);
-  const [usitcApiKey, setUsitcApiKey] = useState("");
-  const [usitcBaseUrl, setUsitcBaseUrl] = useState("https://dataweb.usitc.gov/api/v1");
-  const [usitcConnected, setUsitcConnected] = useState(false);
+  const [usitcMetadata, setUsitcMetadata] = useState<any>({
+    status: "CONFIGURED",
+    configured: true,
+    last_verified_at: null,
+    last_error: null,
+    fallback_active: false,
+    source_url: "https://datawebws.usitc.gov/dataweb"
+  });
   const [usitcTesting, setUsitcTesting] = useState(false);
   
   // Forms & Inputs
@@ -99,6 +104,10 @@ export default function BuyerDashboard() {
       // Fetch Trade Source statuses
       const sourcesRes = await fetch("http://localhost:8000/api/trade/sources", { headers });
       if (sourcesRes.ok) setTradeSources(await sourcesRes.json());
+
+      // Fetch Backend-Verified USITC Status
+      const usitcStatusRes = await fetch("http://localhost:8000/api/trade/sources/usitc/status", { headers });
+      if (usitcStatusRes.ok) setUsitcMetadata(await usitcStatusRes.json());
 
       // Automatic SAP Analytics Sync in Background
       fetch("http://localhost:8000/api/sap/sync-analytics", { method: "POST", headers }).catch(() => {});
@@ -1168,16 +1177,32 @@ export default function BuyerDashboard() {
                           <span className="font-bold text-slate-900 text-sm">USITC DataWeb</span>
                         </div>
                         <p className="text-xs text-slate-400">United States — Trade / Tariff Intelligence</p>
-                        <p className="text-xs text-slate-500">U.S. import/export trade flows, HTS classification, and trade signals. Configured automatically via server environment (`.env`).</p>
+                        <p className="text-xs text-slate-500">U.S. import/export trade flows, HTS classification, and trade signals.</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {tradeSources.find((s: any) => s.source === "USITC")?.mode === "REAL" ? (
-                          <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-150 px-2.5 py-1 rounded">
-                            <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> Active (REAL Mode)
+                        {usitcMetadata.status === "CONNECTED" && (
+                          <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded">
+                            <CheckCircle className="h-3.5 w-3.5 text-emerald-600" /> CONNECTED
                           </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-150 px-2.5 py-1 rounded">
-                            <CheckCircle className="h-3.5 w-3.5 text-blue-600" /> Active (Server .env)
+                        )}
+                        {usitcMetadata.status === "CONFIGURED" && (
+                          <span className="flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded">
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" /> CONFIGURED
+                          </span>
+                        )}
+                        {usitcMetadata.status === "CONNECTION_FAILED" && (
+                          <span className="flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 border border-red-200 px-2.5 py-1 rounded">
+                            <XCircle className="h-3.5 w-3.5 text-red-600" /> CONNECTION FAILED
+                          </span>
+                        )}
+                        {usitcMetadata.status === "FALLBACK" && (
+                          <span className="flex items-center gap-1 text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded">
+                            <AlertTriangle className="h-3.5 w-3.5 text-purple-600" /> FALLBACK MODE
+                          </span>
+                        )}
+                        {usitcMetadata.status === "NOT_CONFIGURED" && (
+                          <span className="flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded">
+                            <XCircle className="h-3.5 w-3.5 text-slate-500" /> NOT CONFIGURED
                           </span>
                         )}
                       </div>
@@ -1185,19 +1210,32 @@ export default function BuyerDashboard() {
 
                     {/* USITC Server Managed Info */}
                     <div className="mt-4 pt-4 border-t border-blue-100 space-y-3">
-                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Server-Side Credentials (`backend/.env`)</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="bg-white/80 p-2.5 rounded border border-slate-200">
-                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">API BASE URL</span>
-                          <span className="text-xs font-mono text-slate-800 font-medium">https://datawebws.usitc.gov/dataweb</span>
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">INTEGRATION ENDPOINT</span>
+                          <span className="text-xs font-mono text-slate-800 font-medium">{usitcMetadata.source_url || "https://datawebws.usitc.gov/dataweb"}</span>
                         </div>
                         <div className="bg-white/80 p-2.5 rounded border border-slate-200">
-                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">API KEY STATUS</span>
-                          <span className="text-xs font-mono text-emerald-700 font-semibold flex items-center gap-1">
-                            <CheckCircle className="h-3 w-3" /> Configured in backend/.env
+                          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">CREDENTIAL STATUS</span>
+                          <span className="text-xs font-mono font-semibold block mt-0.5">
+                            {usitcMetadata.status === "CONNECTED" && <span className="text-emerald-700">Connected & Verified</span>}
+                            {usitcMetadata.status === "CONFIGURED" && <span className="text-amber-700">Configured — Connection not verified</span>}
+                            {usitcMetadata.status === "CONNECTION_FAILED" && <span className="text-red-700">Configured — Connection failed</span>}
+                            {usitcMetadata.status === "FALLBACK" && <span className="text-purple-700">Fallback mode active</span>}
+                            {usitcMetadata.status === "NOT_CONFIGURED" && <span className="text-slate-500">Not configured</span>}
                           </span>
                         </div>
                       </div>
+
+                      {/* Status Explanation */}
+                      <p className="text-xs text-slate-500 font-medium">
+                        {usitcMetadata.status === "CONNECTED" && `USITC DataWeb connection verified live. Last verified: ${usitcMetadata.last_verified_at ? new Date(usitcMetadata.last_verified_at).toLocaleString() : "Just now"}.`}
+                        {usitcMetadata.status === "CONFIGURED" && "Credentials detected in server environment, but live connection has not yet been verified."}
+                        {usitcMetadata.status === "CONNECTION_FAILED" && `Unable to connect to USITC DataWeb. Reason: ${usitcMetadata.last_error || "Service request failed."}`}
+                        {usitcMetadata.status === "FALLBACK" && "USITC live endpoints are currently unavailable. ARES is operating in deterministic fallback mode."}
+                        {usitcMetadata.status === "NOT_CONFIGURED" && "USITC_API_KEY is missing in server environment backend/.env."}
+                      </p>
+
                       <div className="flex items-center gap-3 pt-1">
                         <button
                           id="usitc-test-connection-btn"
@@ -1207,20 +1245,20 @@ export default function BuyerDashboard() {
                             setError("");
                             setSuccess("");
                             try {
-                              const res = await fetch("http://localhost:8000/api/trade/sources", {
+                              const res = await fetch("http://localhost:8000/api/trade/sources/usitc/test", {
+                                method: "POST",
                                 headers: { Authorization: `Bearer ${token}` }
                               });
                               if (res.ok) {
-                                const sources = await res.json();
-                                const usitc = sources.find((s: any) => s.source === "USITC");
-                                if (usitc?.available) {
-                                  setUsitcConnected(true);
-                                  setSuccess("USITC adapter verified: Server API credentials active and operational.");
+                                const data = await res.json();
+                                setUsitcMetadata(data);
+                                if (data.success) {
+                                  setSuccess("USITC DataWeb connection verified successfully.");
                                 } else {
-                                  setSuccess("USITC adapter verified: Operating in deterministic fallback mode.");
+                                  setError(`USITC connection failed. Reason: ${data.message}`);
                                 }
                               } else {
-                                setError("Could not reach ARES backend.");
+                                setError("Could not reach ARES backend test endpoint.");
                               }
                             } catch (err: any) {
                               setError("Connection test failed: " + err.message);
@@ -1228,12 +1266,14 @@ export default function BuyerDashboard() {
                               setUsitcTesting(false);
                             }
                           }}
-                          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded transition-colors flex items-center gap-1.5"
+                          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-1.5 rounded transition-colors flex items-center gap-1.5 shadow-sm"
                         >
-                          <RefreshCw className={`h-3 w-3 ${usitcTesting ? "animate-spin" : ""}`} />
-                          <span>{usitcTesting ? "Verifying..." : "Test Adapter Connection"}</span>
+                          <RefreshCw className={`h-3.5 w-3.5 ${usitcTesting ? "animate-spin" : ""}`} />
+                          <span>
+                            {usitcTesting ? "Testing connection..." : usitcMetadata.status === "CONNECTED" ? "Retest Connection" : usitcMetadata.status === "CONNECTION_FAILED" ? "Retry Connection" : "Test Connection"}
+                          </span>
                         </button>
-                        <p className="text-xs text-slate-400">Credentials are secured in server environment `.env` file and managed automatically.</p>
+                        <p className="text-xs text-slate-400">Server executes HTTPS connectivity test directly against USITC DataWeb host.</p>
                       </div>
                     </div>
                   </div>

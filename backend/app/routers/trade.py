@@ -22,6 +22,13 @@ from ..services.trade_adapters import get_trade_adapters, NormalizedTradeEvent
 router = APIRouter(prefix="/api/trade", tags=["trade-ingestion"])
 
 
+# In-memory USITC status verification state
+USITC_VERIFICATION_STATE = {
+    "last_verified_at": None,
+    "status": "NOT_CONFIGURED" if not settings.USITC_API_KEY else "CONFIGURED",
+    "last_error": None
+}
+
 @router.get("/sources")
 def list_trade_sources(
     current_user: models.User = Depends(auth.require_buyer),
@@ -38,6 +45,69 @@ def list_trade_sources(
         }
         for adapter in adapters
     ]
+
+@router.get("/sources/usitc/status")
+def get_usitc_status(
+    current_user: models.User = Depends(auth.require_buyer)
+):
+    """
+    Get honest, backend-verified USITC DataWeb status.
+    Statuses: NOT_CONFIGURED, CONFIGURED, CONNECTED, CONNECTION_FAILED, FALLBACK
+    """
+    configured = bool(settings.USITC_API_KEY)
+    
+    if not configured:
+        status_val = "NOT_CONFIGURED"
+    elif USITC_VERIFICATION_STATE["status"] == "CONNECTED":
+        status_val = "CONNECTED"
+    elif USITC_VERIFICATION_STATE["status"] == "CONNECTION_FAILED":
+        status_val = "CONNECTION_FAILED"
+    elif settings.USE_MOCK_SAP:
+        status_val = "FALLBACK"
+    else:
+        status_val = "CONFIGURED"
+
+    return {
+        "provider": "USITC",
+        "status": status_val,
+        "configured": configured,
+        "last_verified_at": USITC_VERIFICATION_STATE["last_verified_at"],
+        "last_error": USITC_VERIFICATION_STATE["last_error"],
+        "fallback_active": settings.USE_MOCK_SAP or status_val in ["FALLBACK", "CONNECTION_FAILED"],
+        "source_url": settings.USITC_API_BASE_URL
+    }
+
+@router.post("/sources/usitc/test")
+def test_usitc_connection(
+    current_user: models.User = Depends(auth.require_buyer)
+):
+    """
+    Perform a REAL backend connectivity test against USITC DataWeb.
+    Safely returns structured result without exposing raw secrets, stack traces or filesystem paths.
+    """
+    from ..services.trade_adapters import USITCAdapter
+    adapter = USITCAdapter()
+    
+    success, reason = adapter.test_connection()
+    timestamp = datetime.datetime.utcnow().isoformat()
+    
+    if success:
+        USITC_VERIFICATION_STATE["status"] = "CONNECTED"
+        USITC_VERIFICATION_STATE["last_verified_at"] = timestamp
+        USITC_VERIFICATION_STATE["last_error"] = None
+    else:
+        USITC_VERIFICATION_STATE["status"] = "CONNECTION_FAILED"
+        USITC_VERIFICATION_STATE["last_error"] = reason
+
+    return {
+        "provider": "USITC",
+        "success": success,
+        "status": USITC_VERIFICATION_STATE["status"],
+        "message": reason,
+        "timestamp": timestamp,
+        "fallback_active": not success
+    }
+
 
 
 @router.post("/ingest", response_model=List[schemas.TariffEventResponse])

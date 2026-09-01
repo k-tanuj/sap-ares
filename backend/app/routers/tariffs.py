@@ -81,17 +81,14 @@ def update_tariff_status(
                    for cat in event.affected_hscode_categories.split(",")):
                 affected_prods.append(p)
         
-        # If no explicit matching, default to MAT-001 (Microcontrollers) as affected for demo purposes
-        if not affected_prods:
-            microchip = db.query(models.Product).filter(models.Product.id == "MAT-001").first()
-            if microchip:
-                affected_prods.append(microchip)
-
-        # Find all suppliers offering these products
-        affected_product_ids = [p.id for p in affected_prods]
-        conditions = db.query(models.SupplierCondition).filter(
-            models.SupplierCondition.product_id.in_(affected_product_ids)
-        ).all()
+        # If no explicit product mapping exists, do not fabricate a product match.
+        # Unmapped events require human review / explicit product mapping.
+        if affected_prods:
+            # Find all suppliers offering these products
+            affected_product_ids = [p.id for p in affected_prods]
+            conditions = db.query(models.SupplierCondition).filter(
+                models.SupplierCondition.product_id.in_(affected_product_ids)
+            ).all()
         
         supplier_ids = list(set(c.supplier_org_id for c in conditions))
         

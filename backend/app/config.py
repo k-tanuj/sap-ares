@@ -16,6 +16,10 @@ class Settings:
     SAP_API_KEY: str = os.getenv("SAP_API_KEY", "")
     SAP_HUB_BASE_URL: str = os.getenv("SAP_HUB_BASE_URL", "https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap")
     
+    # Trade Intelligence Configurations
+    USITC_API_BASE_URL: str = os.getenv("USITC_API_BASE_URL", "https://datawebws.usitc.gov/dataweb")
+    USITC_API_KEY: str = os.getenv("USITC_API_KEY", "")
+
     # Toggle mock integrations
     USE_MOCK_SAP: bool = os.getenv("USE_MOCK_SAP", "false").lower() == "true"
 

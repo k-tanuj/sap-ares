@@ -15,7 +15,7 @@ Architecture:
     Validation → Human Review → CONFIRMED / REJECTED
 """
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
@@ -152,8 +152,7 @@ class CBICAdapter(TradeSourceAdapter):
                 raise ImportError("BeautifulSoup not installed")
                 
             # Attempt live HTTP scraping
-            with httpx.Client(timeout=10.0, verify=False) as client:
-                # Using verify=False because Indian Govt sites sometimes have SSL issues
+            with httpx.Client(timeout=10.0) as client:
                 response = client.get(self.base_url, headers={"User-Agent": "Mozilla/5.0"})
                 response.raise_for_status()
                 
@@ -205,7 +204,7 @@ class DGFTAdapter(TradeSourceAdapter):
                 raise ImportError("BeautifulSoup not installed")
                 
             # Attempt live HTTP scraping
-            with httpx.Client(timeout=10.0, verify=False) as client:
+            with httpx.Client(timeout=10.0) as client:
                 response = client.get(self.base_url, headers={"User-Agent": "Mozilla/5.0"})
                 response.raise_for_status()
                 
@@ -268,6 +267,32 @@ class USITCAdapter(TradeSourceAdapter):
     def is_available(self) -> bool:
         return bool(self.api_key)
 
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        Safely test backend connectivity to USITC DataWeb API.
+        Returns (success: bool, sanitized_reason: str).
+        Never exposes raw exception dumps, stack traces, or credentials.
+        """
+        if not self.api_key:
+            return False, "Not configured — USITC_API_KEY missing in backend environment"
+        
+        try:
+            url = f"{self.base_url}/api/v2/system-alert"
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.get(url, headers=self._headers())
+                if resp.status_code == 200:
+                    return True, "USITC connection verified successfully"
+                elif resp.status_code in [401, 403]:
+                    return False, "Authentication failed — invalid or expired API key"
+                else:
+                    return False, f"USITC service unavailable (HTTP {resp.status_code})"
+        except httpx.ConnectTimeout:
+            return False, "USITC service timed out"
+        except httpx.ConnectError:
+            return False, "Network error connecting to USITC host"
+        except Exception:
+            return False, "USITC service request failed"
+
     def _headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.api_key}",
@@ -301,7 +326,7 @@ class USITCAdapter(TradeSourceAdapter):
     def _fetch_system_alerts(self) -> List[NormalizedTradeEvent]:
         """GET /api/v2/system-alert — official USITC trade/policy notices."""
         url = f"{self.base_url}/api/v2/system-alert"
-        with httpx.Client(timeout=10.0, verify=False) as client:
+        with httpx.Client(timeout=10.0) as client:
             resp = client.get(url, headers=self._headers())
             resp.raise_for_status()
             data = resp.json()
@@ -333,7 +358,7 @@ class USITCAdapter(TradeSourceAdapter):
         """
         results = []
 
-        with httpx.Client(timeout=15.0, verify=False) as client:
+        with httpx.Client(timeout=15.0) as client:
             # First, try the GET endpoint for current tariff details (no POST body required)
             try:
                 resp = client.get(
