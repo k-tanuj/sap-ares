@@ -835,7 +835,7 @@ export default function BuyerDashboard() {
                 </div>
                 
                 <div className="space-y-4">
-                  {scenarios.map((s) => (
+                  {scenarios.filter(s => s.status === "PENDING_REVIEW").map((s) => (
                     <div key={s.id} className="border border-slate-200 rounded p-5 shadow-sm">
                       <div className="flex justify-between items-start">
                         <div>
@@ -889,44 +889,26 @@ export default function BuyerDashboard() {
                         </div>
                       </div>
 
-                      {s.status === "PENDING_REVIEW" ? (
-                        <div className="mt-4 flex justify-end">
-                          <button
-                            onClick={() => handleApproveScenario(s.id)}
-                            disabled={s.feasibility === "INFEASIBLE"}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-3.5 py-1.5 rounded transition-colors disabled:opacity-50 shadow-sm"
-                          >
-                            Approve Scenario
-                          </button>
-                        </div>
-                      ) : s.status === "SUPERSEDED" ? (
-                        <div className="mt-4 flex justify-between items-center text-xs font-semibold text-slate-400">
-                          <span className="bg-slate-100 px-2.5 py-1 rounded border border-slate-200">SUPERSEDED BY APPROVED PLAN</span>
-                        </div>
-                      ) : (
-                        <div className="mt-4 flex flex-wrap justify-between items-center gap-2">
-                          <span className="text-xs font-semibold text-slate-500">Decision Executed into System State & SAP</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
-                              <CheckCircle className="h-4 w-4 text-emerald-600" /> Approved & Executed
-                            </span>
-                            <button
-                              onClick={handleClearScenarioWorkspace}
-                              className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded transition-colors flex items-center gap-1"
-                            >
-                              <RotateCcw className="h-3 w-3" /> Start New Mitigation
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          onClick={() => handleApproveScenario(s.id)}
+                          disabled={s.feasibility === "INFEASIBLE"}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-3.5 py-1.5 rounded transition-colors disabled:opacity-50 shadow-sm"
+                        >
+                          Approve Scenario
+                        </button>
+                      </div>
                     </div>
                   ))}
                   
-                  {scenarios.length === 0 && (
-                    <div className="text-center p-8 text-slate-400 text-sm">
-                      No recovery plans generated. Run the orchestrator inputs on the left to start.
+                  {scenarios.filter(s => s.status === "PENDING_REVIEW").length === 0 && (
+                    <div className="text-center p-12 bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-3">
+                      <Shield className="h-8 w-8 text-indigo-400 mx-auto" />
+                      <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">No Active Candidate Scenarios</h4>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        Select a disruption incident on the left, enter target material ID & deficit quantity, then click <b>Execute AI & Math Optimization</b> to generate fresh candidate plans.
+                      </p>
                     </div>
-                  )}
                 </div>
               </div>
             </div>
