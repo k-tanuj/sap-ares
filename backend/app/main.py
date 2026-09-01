@@ -7,7 +7,7 @@ import datetime
 from .database import engine, Base, get_db
 from .config import settings
 from . import models, auth, schemas, crud
-from .routers import auth as auth_router, suppliers as suppliers_router, tariffs as tariffs_router, scenarios as scenarios_router, sap as sap_router, trade as trade_router
+from .routers import auth as auth_router, suppliers as suppliers_router, tariffs as tariffs_router, scenarios as scenarios_router, sap as sap_router, trade as trade_router, analytics as analytics_router
 import subprocess
 
 # Run Alembic migrations programmatically
@@ -38,6 +38,7 @@ app.include_router(tariffs_router.router)
 app.include_router(scenarios_router.router)
 app.include_router(sap_router.router)
 app.include_router(trade_router.router)
+app.include_router(analytics_router.router)
 
 @app.get("/api/audit-logs", response_model=List[schemas.AuditLogResponse])
 def get_audit_logs(

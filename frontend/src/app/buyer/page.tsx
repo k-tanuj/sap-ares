@@ -29,6 +29,7 @@ export default function BuyerDashboard() {
   const [simulation, setSimulation] = useState<any | null>(null);
   const [routes, setRoutes] = useState<any[]>([]);
   const [tradeSources, setTradeSources] = useState<any[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [usitcMetadata, setUsitcMetadata] = useState<any>({
     status: "CONFIGURED",
     configured: true,
@@ -137,6 +138,10 @@ export default function BuyerDashboard() {
       // Fetch Backend-Verified USITC Status
       const usitcStatusRes = await fetch("http://localhost:8000/api/trade/sources/usitc/status", { headers });
       if (usitcStatusRes.ok) setUsitcMetadata(await usitcStatusRes.json());
+
+      // Fetch live analytics dashboard data
+      const analyticsRes = await fetch("http://localhost:8000/api/analytics/dashboard", { headers });
+      if (analyticsRes.ok) setAnalyticsData(await analyticsRes.json());
 
       // Automatic SAP Analytics Sync in Background
       fetch("http://localhost:8000/api/sap/sync-analytics", { method: "POST", headers }).catch(() => {});
@@ -936,70 +941,104 @@ export default function BuyerDashboard() {
             </div>
           )}
 
-          {/* TAB: ANALYTICS (SAC mock display) */}
+          {/* TAB: ANALYTICS — live DB-computed data */}
           {activeTab === "analytics" && (
             <div className="space-y-6">
               <div className="bg-white border border-slate-200 rounded shadow-sm p-6">
-                <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-2">SAP Analytics Cloud Dashboard</h3>
-                <p className="text-sm text-slate-400 mb-6">ARES streams aggregated trade compliance and recovery metrics to SAC endpoints. Operational actions remain inside this portal.</p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Supplier Risk Analysis */}
-                  <div className="border border-slate-200 rounded p-4">
-                    <span className="text-sm font-bold text-slate-400 block mb-2 uppercase">Geopolitical Supplier Concentration</span>
-                    <div className="space-y-3">
-                      {[
-                        { country: "China", count: 1, share: "12.5%", color: "bg-red-500" },
-                        { country: "Germany", count: 1, share: "12.5%", color: "bg-amber-500" },
-                        { country: "Vietnam", count: 1, share: "12.5%", color: "bg-indigo-500" },
-                        { country: "Other (Japan/Japan/etc)", count: 5, share: "62.5%", color: "bg-emerald-500" }
-                      ].map((c, i) => (
-                        <div key={i} className="text-sm">
-                          <div className="flex justify-between font-semibold mb-1">
-                            <span>{c.country}</span>
-                            <span>{c.share}</span>
-                          </div>
-                          <div className="w-full bg-slate-100 h-1.5 rounded overflow-hidden">
-                            <div className={`h-full ${c.color}`} style={{width: c.share}}></div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Tariff Cost Exposure */}
-                  <div className="border border-slate-200 rounded p-4 flex flex-col justify-between">
-                    <div>
-                      <span className="text-sm font-bold text-slate-400 block mb-2 uppercase">Financial Disruption Exposure</span>
-                      <div className="mt-4">
-                        <span className="text-4xl font-extrabold text-slate-900">$125,000</span>
-                        <p className="text-sm text-slate-400 mt-1">Estimated annual tariff penalty if sourcing continues unmitigated from China.</p>
-                      </div>
-                    </div>
-                    <div className="bg-red-50 border border-red-150 p-2 rounded text-xs text-red-800 font-semibold mt-4">
-                      Exposure Source: MCU Sourcing (MAT-001)
-                    </div>
-                  </div>
-
-                  {/* Recovery scenario ranking */}
-                  <div className="border border-slate-200 rounded p-4">
-                    <span className="text-sm font-bold text-slate-400 block mb-2 uppercase">Approved Scenario Rank (SAC Model)</span>
-                    <div className="space-y-2 mt-4 text-sm font-semibold">
-                      <div className="flex justify-between border-b pb-2">
-                        <span>1. Alternative Routing (Air)</span>
-                        <span className="text-indigo-600">Speed Optimal</span>
-                      </div>
-                      <div className="flex justify-between border-b pb-2">
-                        <span>2. Sourcing Reallocation (Munich)</span>
-                        <span className="text-indigo-600">Cost Optimal</span>
-                      </div>
-                      <div className="flex justify-between text-slate-400">
-                        <span>3. Inventory Sourcing Drawdown</span>
-                        <span>Baseline Option</span>
-                      </div>
-                    </div>
-                  </div>
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-base font-bold uppercase tracking-wider text-slate-500">SAP Analytics Cloud Dashboard</h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-150 uppercase tracking-wider">Live DB Data</span>
                 </div>
+                <p className="text-sm text-slate-400 mb-6">Aggregated trade compliance and recovery metrics computed from live database records. No mock values.</p>
+
+                {!analyticsData ? (
+                  <div className="text-center p-12 text-slate-400 text-sm">Loading analytics...</div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                    {/* Supplier Concentration — computed from SupplierProfile.country */}
+                    <div className="border border-slate-200 rounded p-4">
+                      <span className="text-sm font-bold text-slate-400 block mb-3 uppercase">Geopolitical Supplier Concentration</span>
+                      {analyticsData.supplier_concentration.length === 0 ? (
+                        <p className="text-xs text-slate-400">No supplier country data found.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {analyticsData.supplier_concentration.map((c: any, i: number) => {
+                            const colors = ["bg-red-500", "bg-amber-500", "bg-indigo-500", "bg-emerald-500", "bg-purple-500", "bg-sky-500"];
+                            return (
+                              <div key={i} className="text-sm">
+                                <div className="flex justify-between font-semibold mb-1">
+                                  <span>{c.country}</span>
+                                  <span className="text-slate-500">{c.share_percent}% ({c.supplier_count})</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-1.5 rounded overflow-hidden">
+                                  <div className={`h-full ${colors[i % colors.length]}`} style={{width: `${c.share_percent}%`}}></div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-400 font-semibold">
+                        {analyticsData.summary.total_suppliers} total active suppliers across {analyticsData.summary.countries_exposed} countries
+                      </div>
+                    </div>
+
+                    {/* Tariff Financial Exposure — computed from rate × supplier conditions */}
+                    <div className="border border-slate-200 rounded p-4 flex flex-col justify-between">
+                      <div>
+                        <span className="text-sm font-bold text-slate-400 block mb-2 uppercase">Financial Disruption Exposure</span>
+                        <div className="mt-4">
+                          <span className="text-4xl font-extrabold text-slate-900">
+                            ${analyticsData.tariff_exposure.total_annual_exposure_usd.toLocaleString()}
+                          </span>
+                          <p className="text-sm text-slate-400 mt-1">Estimated annual tariff penalty across all active disruption events.</p>
+                        </div>
+                        {analyticsData.tariff_exposure.items.slice(0, 2).map((item: any) => (
+                          <div key={item.event_id} className="mt-3 text-xs">
+                            <div className="flex justify-between font-semibold text-slate-600 mb-0.5">
+                              <span className="truncate max-w-[60%]">{item.event_title}</span>
+                              <span>${item.annual_exposure_usd.toLocaleString()}</span>
+                            </div>
+                            <div className="text-slate-400">{item.source_country} · {(item.tariff_rate * 100).toFixed(0)}% tariff rate · {item.affected_supplier_count} supplier(s)</div>
+                          </div>
+                        ))}
+                      </div>
+                      {analyticsData.tariff_exposure.items.length === 0 && (
+                        <div className="bg-slate-50 border border-slate-200 p-2 rounded text-xs text-slate-500 font-semibold mt-4">
+                          No active tariff events with sourcing exposure found.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Approved Scenario Rank — from Scenario table, status=APPROVED */}
+                    <div className="border border-slate-200 rounded p-4">
+                      <span className="text-sm font-bold text-slate-400 block mb-3 uppercase">Approved Scenario Rank</span>
+                      {analyticsData.approved_scenario_rank.length === 0 ? (
+                        <div className="text-center py-6">
+                          <p className="text-xs text-slate-400">No approved scenarios yet. Approve a recovery plan from the Scenarios tab to populate this ranking.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 mt-2 text-sm">
+                          {analyticsData.approved_scenario_rank.map((s: any) => (
+                            <div key={s.id} className="flex justify-between items-center border-b border-slate-100 pb-2">
+                              <span className="font-semibold text-slate-700">{s.rank}. {s.name}</span>
+                              <span className={`text-xs font-bold ${
+                                s.objective === "COST" ? "text-emerald-600" :
+                                s.objective === "SPEED" ? "text-indigo-600" :
+                                s.objective === "RISK_REDUCTION" ? "text-amber-600" : "text-slate-500"
+                              }`}>{s.objective}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-400 font-semibold">
+                        {analyticsData.summary.total_approved_scenarios} approved decisions · {analyticsData.summary.confirmed_tariff_events} confirmed events
+                      </div>
+                    </div>
+
+                  </div>
+                )}
               </div>
             </div>
           )}
