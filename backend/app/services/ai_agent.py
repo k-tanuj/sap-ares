@@ -271,52 +271,156 @@ def scenario_generation_node(state: AgentState) -> AgentState:
             return state
     except Exception as e:
         logger.warning(f"Gemini Scenario generation fallback active: {e}")
-        
-    # Deterministic fallback scenario generation if LLM call fails or quota exhausted
+
+    # ── Deterministic Fallback ─────────────────────────────────────────────
+    # Build context-specific recovery plans from actual DB data.
+    # Each plan is unique to the disruption event, product, demand, and
+    # the actual suppliers / routes available in the system.
     suppliers = context_data.get("suppliers", [])
-    target_pid = state['target_product_id']
-    demand = state['demand_qty']
-    
+    routes    = context_data.get("routes", [])
+    tariff    = context_data.get("tariff", {})
+    target_pid = state["target_product_id"]
+    demand     = state["demand_qty"]
+    event_title = tariff.get("title", "Disruption Event")
+    source_country = tariff.get("source_country", "")
+
+    # ── Route lookup helpers ──────────────────────────────────────────────
+    def route_for_supplier(sup_id: str, prefer_fast: bool = False) -> str:
+        """Return the best route ID for a supplier based on its org-id country hints."""
+        is_cn = any(k in sup_id.lower() for k in ["china", "cn", "sino", "asian"])
+        is_de = any(k in sup_id.lower() for k in ["germany", "de", "german", "munich", "bavar"])
+        air_routes   = [r for r in routes if r.get("mode") == "AIR"]
+        ocean_routes = [r for r in routes if r.get("mode") == "OCEAN"]
+        road_routes  = [r for r in routes if r.get("mode") == "ROAD"]
+        if prefer_fast and air_routes:
+            return air_routes[0]["id"]
+        if is_cn and ocean_routes:
+            return ocean_routes[0]["id"]
+        if is_de and road_routes:
+            return road_routes[0]["id"]
+        if routes:
+            return sorted(routes, key=lambda r: r.get("cost_per_unit", 999))[0]["id"]
+        return "RT-DEFAULT"
+
+    # ── Sort suppliers by price ───────────────────────────────────────────
+    def supplier_price(s):
+        return s.get("unit_cost", 9999.0)
+
+    suppliers_sorted_cost = sorted(suppliers, key=supplier_price)
+
+    # ── Identify domestic / non-source-country suppliers ─────────────────
+    domestic_sups = [
+        s for s in suppliers
+        if source_country.lower() not in s.get("supplier_org_id", "").lower()
+        and source_country.lower() not in s.get("name", "").lower()
+    ]
+
+    # ── Identify fastest lead-time supplier ──────────────────────────────
+    def supplier_lead(s):
+        return s.get("lead_time_days", 999)
+
+    suppliers_sorted_speed = sorted(suppliers, key=supplier_lead)
+
     fallback_plans = []
-    if suppliers:
-        # Plan 1: Lowest Total Cost Sourcing Strategy
-        cheapest_sup = sorted(suppliers, key=lambda s: s.get("conditions", [{}])[0].get("base_price", 999.0) if s.get("conditions") else 999.0)[0]
-        sup_id = cheapest_sup.get("id", "org-supplier-china")
+
+    # ── Plan 1: Cost-Optimal — cheapest supplier via cheapest route ───────
+    if suppliers_sorted_cost:
+        sup = suppliers_sorted_cost[0]
+        sup_id = sup.get("supplier_org_id", "")
+        route_id = route_for_supplier(sup_id, prefer_fast=False)
         fallback_plans.append({
-            "name": "Lowest Total Cost Sourcing Strategy",
+            "name": f"Cost-Optimal Sourcing - {event_title[:40]}",
             "objective": "COST",
-            "actions": [
-                {
-                    "action_type": "INCREASE_ALLOCATION",
-                    "supplier_org_id": sup_id,
-                    "product_id": target_pid,
-                    "quantity": demand,
-                    "route_id": "RT-OCEAN-CN-DE" if "china" in sup_id.lower() else "RT-ROAD-DE-DE",
-                    "cost_impact": 0.0
-                }
-            ]
+            "actions": [{
+                "action_type": "INCREASE_ALLOCATION",
+                "supplier_org_id": sup_id,
+                "product_id": target_pid,
+                "quantity": demand,
+                "route_id": route_id,
+                "cost_impact": 0.0
+            }]
         })
 
-        # Plan 2: Tariff & Risk Mitigation Sourcing Strategy
-        local_sups = [s for s in suppliers if "germany" in s.get("id", "").lower() or "local" in s.get("id", "").lower()]
-        risk_sup = local_sups[0] if local_sups else suppliers[-1]
-        risk_sup_id = risk_sup.get("id", "org-supplier-germany")
+    # ── Plan 2: Speed-Optimal — fastest lead-time supplier via air ────────
+    if suppliers_sorted_speed:
+        fast_sup = suppliers_sorted_speed[0]
+        fast_sup_id = fast_sup.get("supplier_org_id", "")
+        air_routes = [r for r in routes if r.get("mode") == "AIR"]
+        fast_route = air_routes[0]["id"] if air_routes else route_for_supplier(fast_sup_id, prefer_fast=True)
+        # Use a different supplier from Plan 1 if possible
+        if fallback_plans and len(suppliers_sorted_speed) > 1 and fast_sup_id == fallback_plans[0]["actions"][0]["supplier_org_id"]:
+            fast_sup = suppliers_sorted_speed[1]
+            fast_sup_id = fast_sup.get("supplier_org_id", "")
         fallback_plans.append({
-            "name": "Tariff & Risk Mitigation Sourcing",
-            "objective": "RISK_REDUCTION",
-            "actions": [
-                {
-                    "action_type": "SWITCH_SUPPLIER",
-                    "supplier_org_id": risk_sup_id,
-                    "product_id": target_pid,
-                    "quantity": demand,
-                    "route_id": "RT-ROAD-DE-DE",
-                    "cost_impact": 5.0
-                }
-            ]
+            "name": f"Expedited Air Recovery - {event_title[:40]}",
+            "objective": "SPEED",
+            "actions": [{
+                "action_type": "INCREASE_ALLOCATION",
+                "supplier_org_id": fast_sup_id,
+                "product_id": target_pid,
+                "quantity": demand,
+                "route_id": fast_route,
+                "cost_impact": 10.0
+            }]
         })
 
-    state["generated_scenarios"] = fallback_plans
+    # ── Plan 3: Risk-Reduction — switch to domestic/non-tariff supplier ───
+    risk_sup_pool = domestic_sups if domestic_sups else suppliers
+    if risk_sup_pool:
+        def supplier_capacity(s):
+            return -(s.get("capacity", 0))
+        risk_sup = sorted(risk_sup_pool, key=supplier_capacity)[0]
+        risk_sup_id = risk_sup.get("supplier_org_id", "")
+        road_routes = [r for r in routes if r.get("mode") == "ROAD"]
+        risk_route = road_routes[0]["id"] if road_routes else route_for_supplier(risk_sup_id)
+        fallback_plans.append({
+            "name": f"Geopolitical Risk Mitigation - {event_title[:40]}",
+            "objective": "RISK_REDUCTION",
+            "actions": [{
+                "action_type": "SWITCH_SUPPLIER",
+                "supplier_org_id": risk_sup_id,
+                "product_id": target_pid,
+                "quantity": demand,
+                "route_id": risk_route,
+                "cost_impact": 5.0
+            }]
+        })
+
+    # ── Plan 4: Balanced split — two suppliers, split demand ─────────────
+    if len(suppliers) >= 2:
+        sup_a = suppliers_sorted_cost[0]
+        sup_b = domestic_sups[0] if domestic_sups else suppliers_sorted_cost[-1]
+        if sup_a.get("supplier_org_id") != sup_b.get("supplier_org_id"):
+            half = demand // 2
+            remainder = demand - half
+            fallback_plans.append({
+                "name": f"Dual-Source Resilience - {event_title[:40]}",
+                "objective": "BALANCED",
+                "actions": [
+                    {
+                        "action_type": "INCREASE_ALLOCATION",
+                        "supplier_org_id": sup_a.get("supplier_org_id", ""),
+                        "product_id": target_pid,
+                        "quantity": half,
+                        "route_id": route_for_supplier(sup_a.get("supplier_org_id", "")),
+                        "cost_impact": 2.0
+                    },
+                    {
+                        "action_type": "INCREASE_ALLOCATION",
+                        "supplier_org_id": sup_b.get("supplier_org_id", ""),
+                        "product_id": target_pid,
+                        "quantity": remainder,
+                        "route_id": route_for_supplier(sup_b.get("supplier_org_id", "")),
+                        "cost_impact": 3.0
+                    }
+                ]
+            })
+
+    if not fallback_plans:
+        state["error"] = "INSUFFICIENT_DATA: No suppliers or routes available to generate recovery plans."
+    else:
+        state["generated_scenarios"] = fallback_plans
+
     return state
 
 
