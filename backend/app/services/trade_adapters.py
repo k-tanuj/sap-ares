@@ -256,10 +256,16 @@ class USITCAdapter(TradeSourceAdapter):
     # HTS chapters relevant to supply chain risk (electronics, magnets, metals, machinery)
     SUPPLY_CHAIN_HTS_CHAPTERS = ["85", "84", "87", "72", "73", "76", "28", "26"]
 
-    def __init__(self, base_url: str = "https://datawebws.usitc.gov/dataweb", api_key: str = ""):
+    def __init__(self, base_url: str = "", api_key: Optional[str] = None):
         import os
-        self.base_url = os.environ.get("USITC_API_BASE_URL", base_url).rstrip("/")
-        self.api_key = os.environ.get("USITC_API_KEY", api_key)
+        from ..config import settings
+        env_url = os.environ.get("USITC_API_BASE_URL")
+        self.base_url = (base_url or env_url or settings.USITC_API_BASE_URL or "https://datawebws.usitc.gov/dataweb").rstrip("/")
+        
+        if api_key is not None:
+            self.api_key = api_key
+        else:
+            self.api_key = os.environ.get("USITC_API_KEY", "")
 
     def get_source_name(self) -> str:
         return "USITC"

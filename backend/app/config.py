@@ -1,7 +1,12 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = Path(__file__).resolve().parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
 class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./ares.db")
     JWT_SECRET: str = os.getenv("JWT_SECRET", "super-secret-ares-key-for-jwt-tokens-hackathon-2026")
