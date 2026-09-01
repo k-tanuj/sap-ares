@@ -47,6 +47,13 @@ def generate_scenarios(
     Generates alternative recovery plans for a tariff event using LangGraph AI,
     MIP optimization, and deterministic validations. Accessible only by Buyers.
     """
+    # 0. Auto-supersede old pending candidate scenarios for this event prior to generating new ones
+    db.query(models.Scenario).filter(
+        models.Scenario.tariff_event_id == event_id,
+        models.Scenario.status == "PENDING_REVIEW"
+    ).update({"status": "SUPERSEDED"}, synchronize_session=False)
+    db.commit()
+
     # 1. Run LangGraph pipeline
     result = run_recovery_scenario_generation(
         db=db,
