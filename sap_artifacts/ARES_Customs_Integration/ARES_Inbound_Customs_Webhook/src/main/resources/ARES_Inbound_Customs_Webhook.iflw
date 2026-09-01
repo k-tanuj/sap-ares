@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+                   xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL" 
+                   xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" 
+                   xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" 
+                   xmlns:di="http://www.omg.org/spec/DD/20100524/DI" 
+                   xmlns:ifl="http://sap.com/xi/info/floorplan" 
+                   id="Definitions_1" 
+                   targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn2:collaboration id="Collaboration_1" name="Default Collaboration">
+    <bpmn2:participant id="Participant_1" name="CustomsAuthority" ifl:type="EndpointSender">
+      <bpmn2:extensionElements>
+        <ifl:property key="cmdVariantUri" value="ctype::sender/id::HTTPS"/>
+      </bpmn2:extensionElements>
+    </bpmn2:participant>
+    <bpmn2:participant id="Participant_2" name="IntegrationProcess" processRef="Process_1"/>
+    <bpmn2:participant id="Participant_3" name="ARESEngine" ifl:type="EndpointRecevier">
+      <bpmn2:extensionElements>
+        <ifl:property key="cmdVariantUri" value="ctype::receiver/id::HTTP"/>
+      </bpmn2:extensionElements>
+    </bpmn2:participant>
+    <bpmn2:messageFlow id="MessageFlow_1" name="HTTPS" sourceRef="Participant_1" targetRef="StartEvent_1">
+      <bpmn2:extensionElements>
+        <ifl:property key="urlPath" value="/ares/customs/webhook"/>
+        <ifl:property key="senderAuthType" value="RoleBased"/>
+      </bpmn2:extensionElements>
+    </bpmn2:messageFlow>
+    <bpmn2:messageFlow id="MessageFlow_2" name="HTTP" sourceRef="EndEvent_1" targetRef="Participant_3">
+      <bpmn2:extensionElements>
+        <ifl:property key="httpAddressWithoutQuery" value="http://localhost:8000/api/sap/webhook/tariff-event"/>
+        <ifl:property key="httpMethod" value="POST"/>
+      </bpmn2:extensionElements>
+    </bpmn2:messageFlow>
+  </bpmn2:collaboration>
+  <bpmn2:process id="Process_1" name="Integration Process" isExecutable="true">
+    <bpmn2:startEvent id="StartEvent_1" name="Start">
+      <bpmn2:outgoing>SequenceFlow_1</bpmn2:outgoing>
+    </bpmn2:startEvent>
+    <bpmn2:sequenceFlow id="SequenceFlow_1" sourceRef="StartEvent_1" targetRef="EndEvent_1"/>
+    <bpmn2:endEvent id="EndEvent_1" name="End">
+      <bpmn2:incoming>SequenceFlow_1</bpmn2:incoming>
+    </bpmn2:endEvent>
+  </bpmn2:process>
+</bpmn2:definitions>

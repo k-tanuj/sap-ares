@@ -1,0 +1,41 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Dependencies & Node
+node_modules/
+frontend/node_modules/
+
+# Next.js build
+.next/
+frontend/.next/
+out/
+build/
+dist/
+
+# Python cache & logs
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.log
+
+# Databases & local state
+*.db
+*.sqlite
+*.sqlite3
+ares.db
+backend/ares.db
+
+# Environment variables & secrets
+.env
+backend/.env
+frontend/.env.local
+*.env
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

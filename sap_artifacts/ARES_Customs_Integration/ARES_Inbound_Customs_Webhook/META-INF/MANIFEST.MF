@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Bundle-SymbolicName: ARES_Inbound_Customs_Webhook
+Bundle-Version: 1.0.0
+Bundle-Name: ARES Inbound Customs Webhook
+Bundle-ManifestVersion: 2
+Origin-Bundle-SymbolicName: ARES_Inbound_Customs_Webhook
+Origin-Bundle-Version: 1.0.0
+SAP-NodeType: IFLMAP
+SAP-BundleType: IntegrationFlow
+Import-Package: org.osgi.framework

@@ -1,0 +1,11 @@
+{
+  "id": "ARES_Customs_Integration",
+  "name": "ARES Customs & Trade Integration",
+  "version": "1.0.0",
+  "vendor": "SAP",
+  "shortText": "Inbound customs and trade policy normalization webhook for ARES Resiliency Engine",
+  "description": "Integration package connecting external trade policy feeds to ARES running on SAP HANA Cloud",
+  "mode": "EDIT_ALLOWED",
+  "supportedPlatform": "Cloud Integration",
+  "category": "Integration"
+}
