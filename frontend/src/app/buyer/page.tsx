@@ -909,6 +909,7 @@ export default function BuyerDashboard() {
                         Select a disruption incident on the left, enter target material ID & deficit quantity, then click <b>Execute AI & Math Optimization</b> to generate fresh candidate plans.
                       </p>
                     </div>
+                  )}
                 </div>
               </div>
             </div>
