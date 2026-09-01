@@ -248,7 +248,17 @@ export default function BuyerDashboard() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error("Scenario generation failed");
+      const data = await res.json();
+      if (!res.ok) {
+        // Surface quota errors with a clear, actionable message
+        const detail = data?.detail || "";
+        if (detail.includes("LLM_QUOTA_EXCEEDED") || detail.includes("RESOURCE_EXHAUSTED")) {
+          setError("⚠️ Gemini API quota exhausted. Update the GEMINI_API_KEY in backend/.env with a key that has available quota, then restart the backend server.");
+        } else {
+          setError(detail || "Scenario generation failed.");
+        }
+        return;
+      }
       setSuccess("AI scenarios generated successfully. Feasibility pruners & OR-Tools MIP optimizer completed.");
       loadAllData(token);
     } catch (err: any) {
