@@ -1,41 +1,75 @@
-# Virtual Environment
+# ==========================================
+# ARES - Git Ignore Configuration
+# ==========================================
+
+# Virtual Environments
 venv/
 env/
 ENV/
+.venv/
+env*/
+backend/venv/
 
-# Dependencies & Node
+# Node & Frontend Dependencies
 node_modules/
 frontend/node_modules/
+.pnpm-store/
+.yarn/
 
-# Next.js build
+# Next.js & Frontend Build Outputs
 .next/
 frontend/.next/
 out/
 build/
 dist/
+.turbo/
 
-# Python cache & logs
+# Python Caches, Bytecode & Testing
 __pycache__/
+*/__pycache__/
+*/**/__pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+*/.pytest_cache/
+.coverage
+htmlcov/
 *.log
+backend/scratch_test.py
+powershell.cmd
 
-# Databases & local state
+# Databases & Local State (SQLite, WAL, SHM)
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 *.sqlite
 *.sqlite3
-ares.db
-backend/ares.db
+ares.db*
+backend/ares.db*
 
-# Environment variables & secrets
+# Temporary Scratch & Large Binary Files
+scratch/
+*.pdf
+*.zip
+*.tar.gz
+
+# Environment Variables & Secrets (Keep .env.example intact)
 .env
-backend/.env
-frontend/.env.local
+.env*.local
 *.env
+backend/.env
+frontend/.env
+frontend/.env.local
+!*.env.example
+!backend/.env.example
+!frontend/.env.example
 
-# IDE & OS files
+# IDEs, Editors & OS Files
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+Desktop.ini
+*.swp
+*.swo

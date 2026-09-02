@@ -55,6 +55,7 @@ class Facility(Base):
     type = Column(String(50)) # MANUFACTURING, WAREHOUSE, DISTRIBUTION
     capacity_utilization = Column(Float, default=0.0) # 0 to 100
     emergency_capacity = Column(Float, default=0.0) # units per week
+    country = Column(String(100), nullable=True) # Used for origin exposure matching
 
     organization = relationship("Organization", back_populates="facilities")
 
@@ -68,6 +69,18 @@ class Product(Base):
     unit_cost = Column(Float, default=0.0)
     lead_time_days = Column(Integer, default=0)
     min_order_qty = Column(Integer, default=0) # MOQ
+    hs_code = Column(String(100), nullable=True) # Added for tariff matching
+
+class BuyerSupplierRelationship(Base):
+    __tablename__ = "buyer_supplier_relationships"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    buyer_org_id = Column(String(100), ForeignKey("organizations.id"), nullable=False)
+    supplier_org_id = Column(String(100), ForeignKey("organizations.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    buyer_org = relationship("Organization", foreign_keys=[buyer_org_id])
+    supplier_org = relationship("Organization", foreign_keys=[supplier_org_id])
 
 class Inventory(Base):
     __tablename__ = "inventories"
@@ -102,6 +115,7 @@ class Route(Base):
     __tablename__ = "routes"
 
     id = Column(String(100), primary_key=True, index=True)
+    supplier_org_id = Column(String(100), ForeignKey("organizations.id"), nullable=True) # Optional for global routes, required for supplier-owned
     origin = Column(String(100), nullable=False) # e.g. country or facility code
     destination = Column(String(100), nullable=False)
     mode = Column(String(50), nullable=False) # OCEAN, AIR, ROAD, RAIL
@@ -109,6 +123,8 @@ class Route(Base):
     cost_per_unit = Column(Float, default=0.0)
     capacity_limit = Column(Integer, default=0)
     active = Column(Boolean, default=True)
+
+    supplier_org = relationship("Organization")
 
 class TariffEvent(Base):
     __tablename__ = "tariff_events"
@@ -193,10 +209,51 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    sequence_number = Column(Integer, nullable=True, index=True)
     user_id = Column(Integer, nullable=True)
     email = Column(String(255), nullable=True)
     action = Column(String(100), nullable=False)
     entity_type = Column(String(100))
     entity_id = Column(String(100))
     description = Column(Text)
+    prev_hash = Column(String(64), nullable=True)
+    entry_hash = Column(String(64), nullable=True, index=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+
+class SupplierNotification(Base):
+    __tablename__ = "supplier_notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    supplier_org_id = Column(String(100), ForeignKey("organizations.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=True)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    organization = relationship("Organization")
+    scenario = relationship("Scenario")
+
+class ScenarioNegotiation(Base):
+    __tablename__ = "scenario_negotiations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=False, index=True)
+    supplier_org_id = Column(String(100), ForeignKey("organizations.id"), nullable=False, index=True)
+    product_id = Column(String(100), nullable=False)
+    requested_quantity = Column(Integer, nullable=False)
+    proposed_quantity = Column(Integer, nullable=True)
+    proposed_unit_price = Column(Float, nullable=True)
+    proposed_lead_time_days = Column(Integer, nullable=True)
+    status = Column(String(50), default="PENDING_SUPPLIER_RESPONSE") # PENDING_SUPPLIER_RESPONSE, ACCEPTED, COUNTER_PROPOSED, DECLINED, EXPIRED
+    e_signature_name = Column(String(255), nullable=True)
+    e_signature_hash = Column(String(64), nullable=True)
+    signed_at = Column(DateTime, nullable=True)
+    response_deadline = Column(DateTime, nullable=False)
+    supplier_comments = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    scenario = relationship("Scenario")
+    organization = relationship("Organization")
+

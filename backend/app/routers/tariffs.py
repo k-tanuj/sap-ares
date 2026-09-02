@@ -71,43 +71,66 @@ def update_tariff_status(
 
     # Trigger potential supplier matching only if transitions to CONFIRMED
     if payload.status == "CONFIRMED" and old_status != "CONFIRMED":
-        # Find which components match the tariff category.
-        # HSCodes in demo are simple string checks (e.g. if category is in product description or sku prefix)
-        products = db.query(models.Product).all()
-        affected_prods = []
-        for p in products:
-            # Check if hscode category is in product sku/name or matched categories
-            if any(cat.strip().lower() in p.name.lower() or cat.strip().lower() in p.sku.lower() 
-                   for cat in event.affected_hscode_categories.split(",")):
-                affected_prods.append(p)
+        affected_cats = [cat.strip().lower() for cat in event.affected_hscode_categories.split(",")]
         
-        # If no explicit product mapping exists, do not fabricate a product match.
-        # Unmapped events require human review / explicit product mapping.
+        # 1. HS Code Matches
+        products = db.query(models.Product).filter(models.Product.hs_code.isnot(None)).all()
+        affected_prods = [p for p in products if p.hs_code.strip().lower() in affected_cats]
+        
         if affected_prods:
-            # Find all suppliers offering these products
             affected_product_ids = [p.id for p in affected_prods]
             conditions = db.query(models.SupplierCondition).filter(
                 models.SupplierCondition.product_id.in_(affected_product_ids)
             ).all()
-        
-        supplier_ids = list(set(c.supplier_org_id for c in conditions))
-        
-        # Create confirmation records for each supplier
-        for supplier_id in supplier_ids:
-            # Check if confirmation already exists
-            existing = db.query(models.SupplierConfirmation).filter(
-                models.SupplierConfirmation.tariff_event_id == event_id,
-                models.SupplierConfirmation.supplier_org_id == supplier_id
-            ).first()
             
-            if not existing:
-                conf_schema = schemas.SupplierConfirmationCreate(
-                    tariff_event_id=event_id,
-                    supplier_org_id=supplier_id,
-                    status="POTENTIALLY_AFFECTED",
-                    supplier_notes=f"System identified potential exposure for affected products: {', '.join(affected_product_ids)}"
-                )
-                crud.create_supplier_confirmation(db, conf_schema)
+            supplier_ids = list(set(c.supplier_org_id for c in conditions))
+            
+            for supplier_id in supplier_ids:
+                # 2. Origin Matches
+                has_facility = db.query(models.Facility).filter(
+                    models.Facility.organization_id == supplier_id,
+                    models.Facility.country.ilike(event.source_country)
+                ).first()
+                
+                has_route_origin = db.query(models.Route).filter(
+                    models.Route.supplier_org_id == supplier_id,
+                    models.Route.origin.ilike(event.source_country)
+                ).first()
+                
+                if not has_facility and not has_route_origin:
+                    continue # No origin match
+                    
+                # 3. Destination Matches
+                has_route_dest = db.query(models.Route).filter(
+                    models.Route.supplier_org_id == supplier_id,
+                    models.Route.destination.ilike(event.destination_country)
+                ).first()
+                
+                if not has_route_dest:
+                    continue # No destination match
+                    
+                # 4. Buyer Relationship Matches
+                has_buyer_rel = db.query(models.BuyerSupplierRelationship).filter(
+                    models.BuyerSupplierRelationship.supplier_org_id == supplier_id
+                ).first()
+                
+                if not has_buyer_rel:
+                    continue # No buyer relationship
+                
+                # Check if confirmation already exists
+                existing = db.query(models.SupplierConfirmation).filter(
+                    models.SupplierConfirmation.tariff_event_id == event_id,
+                    models.SupplierConfirmation.supplier_org_id == supplier_id
+                ).first()
+                
+                if not existing:
+                    conf_schema = schemas.SupplierConfirmationCreate(
+                        tariff_event_id=event_id,
+                        supplier_org_id=supplier_id,
+                        status="POTENTIALLY_AFFECTED",
+                        supplier_notes=f"System identified potential exposure: \n- Origin matches: ✓ {event.source_country}\n- Destination matches: ✓ {event.destination_country}\n- HS code matches: ✓ {event.affected_hscode_categories}\n- Buyer relationship: ✓ Confirmed"
+                    )
+                    crud.create_supplier_confirmation(db, conf_schema)
 
     return updated_event
 

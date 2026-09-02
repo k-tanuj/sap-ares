@@ -25,7 +25,7 @@ def get_gemini_client():
         return None
 
 
-def call_gemini_json(prompt: str, system_instruction: Optional[str] = None, model: str = "gemini-3.6-flash") -> Optional[Dict[str, Any]]:
+def call_gemini_json(prompt: str, system_instruction: Optional[str] = None, model: str = "gemini-2.5-flash") -> Optional[Dict[str, Any]]:
     """
     Sends a prompt to Google Gemini requesting structured JSON output.
     Returns parsed dictionary or None if Gemini is not configured / fails.

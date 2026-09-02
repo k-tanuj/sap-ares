@@ -2,7 +2,7 @@
 Trade Ingestion Router for ARES.
 
 Provides endpoints for:
-- Fetching events from India trade sources (CBIC, ICEGATE, DGFT)
+- Fetching events from India trade sources (CBIC, DGFT)
 - Manual event entry (already in tariffs router)
 - CSV/file import ingestion
 - Listing available trade sources and their status
@@ -116,7 +116,7 @@ def ingest_from_trade_sources(
     db: Session = Depends(get_db)
 ):
     """
-    Trigger ingestion from all configured India trade sources (CBIC, ICEGATE, DGFT).
+    Trigger ingestion from all configured India trade sources (CBIC, DGFT).
     
     Pipeline: Adapter → Normalize → TariffEvent(DETECTED) → Human Review
     

@@ -56,20 +56,25 @@ export default function BuyerDashboard() {
     demand_qty: 3500
   });
 
+  const [genTaskId, setGenTaskId] = useState<string | null>(null);
+  const [genProgress, setGenProgress] = useState<number>(0);
+  const [genLogs, setGenLogs] = useState<string[]>([]);
+  const [isSapSyncing, setIsSapSyncing] = useState<boolean>(false);
+  const [scenarioNegotiations, setScenarioNegotiations] = useState<{ [key: number]: any[] }>({});
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   // Load context on mount
   useEffect(() => {
-    const savedToken = localStorage.getItem("ares_token");
     const role = localStorage.getItem("ares_role");
 
-    if (!savedToken || !role || !role.startsWith("BUYER")) {
+    if (!role || !role.startsWith("BUYER")) {
       router.replace("/login");
       return;
     }
-    setToken(savedToken);
-    loadAllData(savedToken);
+    // With HttpOnly cookies, we don't store the raw token.
+    loadAllData("");
   }, []);
 
   const loadAllData = async (jwt: string) => {
@@ -79,7 +84,7 @@ export default function BuyerDashboard() {
       const headers = { Authorization: `Bearer ${jwt}` };
       
       // Fetch Suppliers
-      const supRes = await fetch("http://localhost:8000/api/suppliers", { headers });
+      const supRes = await fetch("/api/suppliers", { credentials: "include" });
       if (supRes.status === 401) {
         localStorage.clear();
         router.replace("/login");
@@ -92,7 +97,7 @@ export default function BuyerDashboard() {
       }
 
       // Fetch Tariff Events
-      const tarRes = await fetch("http://localhost:8000/api/tariffs", { headers });
+      const tarRes = await fetch("/api/tariffs", { credentials: "include" });
       if (tarRes.status === 401) {
         localStorage.clear();
         router.replace("/login");
@@ -106,45 +111,45 @@ export default function BuyerDashboard() {
 
       // If database is empty, automatically trigger system seed and reload
       if (loadedSuppliers.length === 0 && loadedTariffs.length === 0) {
-        const seedRes = await fetch("http://localhost:8000/api/system/seed", { method: "POST" });
+        const seedRes = await fetch("/api/system/seed", { method: "POST" });
         if (seedRes.ok) {
-          const sRes2 = await fetch("http://localhost:8000/api/suppliers", { headers });
+          const sRes2 = await fetch("/api/suppliers", { credentials: "include" });
           if (sRes2.ok) setSuppliers(await sRes2.json());
-          const tRes2 = await fetch("http://localhost:8000/api/tariffs", { headers });
+          const tRes2 = await fetch("/api/tariffs", { credentials: "include" });
           if (tRes2.ok) setTariffs(await tRes2.json());
         }
       }
 
       // Fetch Confirmations
-      const confRes = await fetch("http://localhost:8000/api/tariffs/confirmations/all", { headers });
+      const confRes = await fetch("/api/tariffs/confirmations/all", { credentials: "include" });
       if (confRes.ok) setConfirmations(await confRes.json());
 
       // Fetch Scenarios
-      const scenRes = await fetch("http://localhost:8000/api/scenarios", { headers });
+      const scenRes = await fetch("/api/scenarios", { credentials: "include" });
       if (scenRes.ok) setScenarios(await scenRes.json());
 
       // Fetch Audit Logs
-      const auditRes = await fetch("http://localhost:8000/api/audit-logs", { headers });
+      const auditRes = await fetch("/api/audit-logs", { credentials: "include" });
       if (auditRes.ok) setAuditLogs(await auditRes.json());
 
       // Fetch Active Routes
-      const routesRes = await fetch("http://localhost:8000/api/suppliers/routes", { headers });
+      const routesRes = await fetch("/api/suppliers/routes", { credentials: "include" });
       if (routesRes.ok) setRoutes(await routesRes.json());
 
       // Fetch Trade Source statuses
-      const sourcesRes = await fetch("http://localhost:8000/api/trade/sources", { headers });
+      const sourcesRes = await fetch("/api/trade/sources", { credentials: "include" });
       if (sourcesRes.ok) setTradeSources(await sourcesRes.json());
 
       // Fetch Backend-Verified USITC Status
-      const usitcStatusRes = await fetch("http://localhost:8000/api/trade/sources/usitc/status", { headers });
+      const usitcStatusRes = await fetch("/api/trade/sources/usitc/status", { credentials: "include" });
       if (usitcStatusRes.ok) setUsitcMetadata(await usitcStatusRes.json());
 
       // Fetch live analytics dashboard data
-      const analyticsRes = await fetch("http://localhost:8000/api/analytics/dashboard", { headers });
+      const analyticsRes = await fetch("/api/analytics/dashboard", { credentials: "include" });
       if (analyticsRes.ok) setAnalyticsData(await analyticsRes.json());
 
       // Automatic SAP Analytics Sync in Background
-      fetch("http://localhost:8000/api/sap/sync-analytics", { method: "POST", headers }).catch(() => {});
+      fetch("/api/sap/sync-analytics", { method: "POST", credentials: "include" }).catch(() => {});
 
     } catch (err: any) {
       setError("Failed to sync backend data.");
@@ -160,21 +165,18 @@ export default function BuyerDashboard() {
 
   // Onboarding lifecycle
   const handleUpdateSupplierStatus = async (orgId: string, newStatus: string) => {
-    if (!token) return;
     setError("");
     setSuccess("");
     try {
-      const res = await fetch(`http://localhost:8000/api/suppliers/${orgId}/status`, {
+      const res = await fetch(`/api/suppliers/${orgId}/status`, {
         method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })
       });
       if (!res.ok) throw new Error("Status update failed");
       setSuccess(`Supplier ${orgId} set to status: ${newStatus}`);
-      loadAllData(token);
+      loadAllData("");
     } catch (err: any) {
       setError(err.message);
     }
@@ -182,21 +184,18 @@ export default function BuyerDashboard() {
 
   // Review & Confirm Tariff
   const handleConfirmTariff = async (eventId: number, statusStr: "CONFIRMED" | "REJECTED") => {
-    if (!token) return;
     setError("");
     setSuccess("");
     try {
-      const res = await fetch(`http://localhost:8000/api/tariffs/${eventId}/status`, {
+      const res = await fetch(`/api/tariffs/${eventId}/status`, {
         method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: statusStr })
       });
       if (!res.ok) throw new Error("Tariff update failed");
       setSuccess(`Tariff event #${eventId} reviewed & set to ${statusStr}. Potentially affected suppliers flagged.`);
-      loadAllData(token);
+      loadAllData("");
     } catch (err: any) {
       setError(err.message);
     }
@@ -205,16 +204,13 @@ export default function BuyerDashboard() {
   // Create Manual Event
   const handleCreateTariff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("http://localhost:8000/api/tariffs", {
+      const res = await fetch("/api/tariffs", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...newTariff,
           effective_date: new Date(newTariff.effective_date).toISOString()
@@ -230,23 +226,78 @@ export default function BuyerDashboard() {
         tariff_rate_increase: 0.1,
         effective_date: ""
       });
-      loadAllData(token);
+      loadAllData("");
     } catch (err: any) {
       setError(err.message);
     }
   };
 
-  // Generate Scenarios via LangGraph
+  // SSE Hook for Async Task Progress
+  useEffect(() => {
+    if (!genTaskId) return;
+
+    const eventSource = new EventSource(`/api/scenarios/tasks/${genTaskId}/stream`, {
+      withCredentials: true // needed for HttpOnly cookies
+    });
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.progress !== undefined) {
+          setGenProgress(data.progress);
+        }
+        if (data.message) {
+          setGenLogs(prev => [...prev, data.message]);
+        }
+        
+        if (data.status === "COMPLETED") {
+          setSuccess("AI scenarios generated successfully. Feasibility pruners & OR-Tools MIP optimizer completed.");
+          loadAllData("");
+          eventSource.close();
+          setTimeout(() => setGenTaskId(null), 4000); // hide after 4 seconds
+        } else if (data.status === "ERROR") {
+          setError(data.result?.error || "AI generation failed");
+          eventSource.close();
+          setGenTaskId(null);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE Error:", err);
+      eventSource.close();
+      setGenTaskId(null);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [genTaskId, token]);
+
+
+  const handleLoadNegotiations = async (scenId: number) => {
+    try {
+      const res = await fetch(`/api/scenarios/${scenId}/negotiations`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setScenarioNegotiations(prev => ({ ...prev, [scenId]: data }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Generate Scenarios via LangGraph (Async via background worker + SSE)
   const handleGenerateScenarios = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) return;
     setError("");
     setSuccess("");
-    setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/scenarios/generate?event_id=${genScenarioParams.event_id}&product_id=${genScenarioParams.product_id}&demand_qty=${genScenarioParams.demand_qty}`, {
+      const res = await fetch(`/api/scenarios/generate-async?event_id=${genScenarioParams.event_id}&product_id=${genScenarioParams.product_id}&demand_qty=${genScenarioParams.demand_qty}`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: "include"
       });
       const data = await res.json();
       if (!res.ok) {
@@ -259,54 +310,59 @@ export default function BuyerDashboard() {
         }
         return;
       }
-      setSuccess("AI scenarios generated successfully. Feasibility pruners & OR-Tools MIP optimizer completed.");
-      loadAllData(token);
+      
+      // Start SSE listening
+      setGenTaskId(data.task_id);
+      setGenProgress(0);
+      setGenLogs(["AI scenario generation initialized..."]);
+      
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
   // Approve Scenario
   const handleApproveScenario = async (scenId: number) => {
-    if (!token) return;
     setError("");
     setSuccess("");
+    setIsSapSyncing(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/scenarios/${scenId}/approve`, {
+      const res = await fetch(`/api/scenarios/${scenId}/approve`, {
         method: "PUT",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "APPROVED" })
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.detail || "Approval failed");
       }
-      setSuccess(`Scenario #${scenId} Approved. Simulation executed and SAP PO records synced.`);
-      loadAllData(token);
+      
+      const uniqueSuppliers = new Set(data.action_details?.map((act: any) => act.supplier_org_id).filter(Boolean));
+      const count = uniqueSuppliers.size;
+      
+      setSuccess(`✅ Scenario Approved. SAP S/4HANA Write-Back Successful. ${count} affected supplier${count !== 1 ? 's' : ''} notified.`);
+      loadAllData("");
       setActiveTab("simulation");
-      loadSimulationResult(scenId, token);
+      loadSimulationResult(scenId, "");
     } catch (err: any) {
-      setError(err.message);
+      setError("SAP ERP Sync Error: " + err.message);
+    } finally {
+      setIsSapSyncing(false);
     }
   };
 
   // Clear Scenario Workspace for New Mitigation
   const handleClearScenarioWorkspace = async () => {
-    if (!token) return;
     setError("");
     setSuccess("");
     try {
-      await fetch("http://localhost:8000/api/scenarios/clear-pending", {
+      await fetch("/api/scenarios/clear-pending", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: "include"
       });
       setGenScenarioParams({ event_id: 1, product_id: "", demand_qty: 1000 });
-      await loadAllData(token);
+      await loadAllData("");
       setSuccess("Mitigation workspace cleared. Select a disruption incident to run a new scenario.");
     } catch (err: any) {
       setError("Failed to clear scenario workspace: " + err.message);
@@ -315,8 +371,8 @@ export default function BuyerDashboard() {
 
   const loadSimulationResult = async (scenId: number, jwt: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/scenarios/${scenId}/simulation`, {
-        headers: { Authorization: `Bearer ${jwt}` }
+      const res = await fetch(`/api/scenarios/${scenId}/simulation`, {
+        credentials: "include"
       });
       if (res.ok) {
         const data = await res.json();
@@ -329,17 +385,16 @@ export default function BuyerDashboard() {
 
   // Sync to SAP manual trigger
   const handleSyncToSAP = async () => {
-    if (!token) return;
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("http://localhost:8000/api/sap/sync-analytics", {
+      const res = await fetch("/api/sap/sync-analytics", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
+        credentials: "include"
       });
       if (!res.ok) throw new Error("SAP Sync failed");
       setSuccess("Successfully synchronized supply network and decisions datasets to SAP Analytics Cloud trial endpoints.");
-      loadAllData(token);
+      loadAllData("");
     } catch (err: any) {
       setError(err.message);
     }
@@ -355,10 +410,8 @@ export default function BuyerDashboard() {
       <aside className="w-64 bg-white/60 backdrop-blur-xl border border-white m-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between relative z-10">
         <div>
           <div className="p-6 border-b border-slate-100">
-            <div className="flex items-center space-x-2">
-              <div className="bg-indigo-100 p-1.5 rounded-lg border border-indigo-200">
-                <Shield className="h-5 w-5 text-indigo-600" />
-              </div>
+            <div className="flex items-center space-x-3">
+              <img src="/ares-logo.svg" alt="ARES Logo" className="h-8 w-8 object-contain" />
               <span className="font-bold text-xl tracking-tight text-slate-800">ARES Control</span>
             </div>
             <p className="text-sm text-indigo-500 font-mono mt-2 uppercase tracking-wider font-semibold">Enterprise Buyer</p>
@@ -578,9 +631,9 @@ export default function BuyerDashboard() {
                       if (!token) return;
                       setError(""); setSuccess("");
                       try {
-                        const res = await fetch("http://localhost:8000/api/trade/ingest", {
+                        const res = await fetch("/api/trade/ingest", {
                           method: "POST",
-                          headers: { Authorization: `Bearer ${token}` }
+                          credentials: "include"
                         });
                         if (!res.ok) throw new Error("Trade ingestion failed");
                         const data = await res.json();
@@ -826,12 +879,32 @@ export default function BuyerDashboard() {
                       className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950"
                     />
                   </div>
-                  <button 
-                    type="submit" disabled={loading}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded transition-colors disabled:opacity-50"
-                  >
-                    {loading ? "Orchestrating Agents..." : "Execute AI & Math Optimization"}
-                  </button>
+                  {genTaskId ? (
+                    <div className="w-full bg-slate-50 border border-slate-200 rounded p-4 space-y-3">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wide">
+                        <span>AI Optimization Progress</span>
+                        <span>{genProgress}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${genProgress}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-xs font-mono text-slate-500 h-16 overflow-y-auto bg-slate-100 p-2 rounded border border-slate-200">
+                        {genLogs.map((log, i) => (
+                          <div key={i}>{'>'} {log}</div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <button 
+                      type="submit" disabled={loading}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded transition-colors disabled:opacity-50"
+                    >
+                      {loading ? "Orchestrating Agents..." : "Execute AI & Math Optimization"}
+                    </button>
+                  )}
                 </form>
               </div>
 
@@ -907,10 +980,17 @@ export default function BuyerDashboard() {
                       <div className="mt-4 flex justify-end">
                         <button
                           onClick={() => handleApproveScenario(s.id)}
-                          disabled={s.feasibility === "INFEASIBLE"}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-3.5 py-1.5 rounded transition-colors disabled:opacity-50 shadow-sm"
+                          disabled={s.feasibility === "INFEASIBLE" || isSapSyncing}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-3.5 py-1.5 rounded transition-colors disabled:opacity-50 shadow-sm flex items-center gap-2"
                         >
-                          Approve Scenario
+                          {isSapSyncing ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              Syncing to SAP...
+                            </>
+                          ) : (
+                            "Approve Scenario"
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1109,17 +1189,63 @@ export default function BuyerDashboard() {
               <div className="space-y-4">
                 {scenarios.filter(s => s.status === "APPROVED").map(s => (
                   <div key={s.id} className="p-4 border border-emerald-150 bg-emerald-50/50 rounded flex flex-col md:flex-row md:items-center justify-between gap-4 text-sm">
-                    <div className="space-y-1">
-                      <span className="font-bold text-slate-900 text-base">{s.name}</span>
-                      <div className="flex space-x-4 text-slate-500 font-medium">
-                        <span>Scenario ID: <b>#{s.id}</b></span>
-                        <span>Objective: <b>{s.objective}</b></span>
-                        <span>Optimized Cost: <b>${s.optimized_cost.toLocaleString()}</b></span>
+                    <div className="flex flex-col space-y-4">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <span className="font-bold text-slate-900 text-base">{s.name}</span>
+                          <div className="flex space-x-4 text-slate-500 font-medium">
+                            <span>Scenario ID: <b>#{s.id}</b></span>
+                            <span>Objective: <b>{s.objective}</b></span>
+                            <span>Optimized Cost: <b>${s.optimized_cost.toLocaleString()}</b></span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center space-x-1.5 text-emerald-800 font-bold uppercase tracking-wider text-xs">
+                            <CheckCircle className="h-4 w-4" />
+                            <span>SAP Transmitted</span>
+                          </div>
+                          <button 
+                            onClick={() => handleLoadNegotiations(s.id)}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                          >
+                            View Supplier Responses
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-1.5 text-emerald-800 font-bold uppercase tracking-wider text-xs">
-                      <CheckCircle className="h-4 w-4" />
-                      <span>SAP Transmitted</span>
+
+                      {/* Negotiations Panel */}
+                      {scenarioNegotiations[s.id] && (
+                        <div className="mt-4 border-t border-emerald-200/50 pt-4">
+                          <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">Live Supplier Negotiations</h5>
+                          {scenarioNegotiations[s.id].length === 0 ? (
+                            <p className="text-xs text-slate-500">No active negotiations for this scenario.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {scenarioNegotiations[s.id].map(neg => (
+                                <div key={neg.id} className="bg-white border border-slate-200 rounded p-3 shadow-sm">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-slate-800 text-sm">{neg.supplier_org_id}</span>
+                                    <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${
+                                      neg.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                                      neg.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' :
+                                      neg.status === 'COUNTERED' ? 'bg-blue-100 text-blue-700' :
+                                      'bg-slate-100 text-slate-700'
+                                    }`}>
+                                      {neg.status}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-slate-500 space-y-1">
+                                    <div className="flex justify-between"><span>Action:</span> <span className="font-semibold text-slate-700">{neg.action_type}</span></div>
+                                    <div className="flex justify-between"><span>Qty:</span> <span className="font-semibold text-slate-700">{neg.proposed_quantity}</span></div>
+                                    <div className="flex justify-between"><span>Price:</span> <span className="font-semibold text-slate-700">${neg.price || '---'}</span></div>
+                                    <div className="flex justify-between"><span>Lead Time:</span> <span className="font-semibold text-slate-700">{neg.lead_time || '---'} days</span></div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1255,9 +1381,9 @@ export default function BuyerDashboard() {
                             setError("");
                             setSuccess("");
                             try {
-                              const res = await fetch("http://localhost:8000/api/trade/sources/usitc/test", {
+                              const res = await fetch("/api/trade/sources/usitc/test", {
                                 method: "POST",
-                                headers: { Authorization: `Bearer ${token}` }
+                                credentials: "include"
                               });
                               if (res.ok) {
                                 const data = await res.json();

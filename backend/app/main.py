@@ -10,14 +10,12 @@ from . import models, auth, schemas, crud
 from .routers import auth as auth_router, suppliers as suppliers_router, tariffs as tariffs_router, scenarios as scenarios_router, sap as sap_router, trade as trade_router, analytics as analytics_router
 import subprocess
 
-# Run Alembic migrations programmatically
+# Safe database schema initialization
 try:
-    import logging
-    import sys
-    logging.getLogger("alembic").info("Running Alembic migrations on startup...")
-    # Only run alembic for sqlite, since alembic is configured for local sqlite
-    if "sqlite" in settings.DATABASE_URL:
-        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd="backend", check=True)
+    import os
+    if os.path.exists("alembic.ini") and "sqlite" in settings.DATABASE_URL:
+        import sys
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=False)
 except Exception as e:
     print(f"Migration notice: {e}")
 
@@ -215,8 +213,12 @@ def seed_database(db: Session):
     # Log initial audits
     crud.log_action(db, "SYSTEM_SEED", "System", "all", "Database successfully seeded with realistic ARES demo story records.")
 
-# Run seeding on startup
+# Run table creation & seeding on startup
 @app.on_event("startup")
 def startup_event():
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"Table creation notice: {e}")
     db = next(get_db())
     seed_database(db)

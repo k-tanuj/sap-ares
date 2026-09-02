@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { 
   Building, Wrench, Package, Truck, AlertOctagon, 
   FileText, Shield, CheckCircle, RefreshCw, Plus, 
-  MapPin, User, Users, Globe, DollarSign, Calendar, LogOut,
+  MapPin, User, Users, Globe, DollarSign, Calendar, LogOut, Bell
 } from "lucide-react";
 
 export default function SupplierPortal() {
@@ -22,12 +22,24 @@ export default function SupplierPortal() {
   // Data States
   const [profile, setProfile] = useState<any | null>(null);
   const [facilities, setFacilities] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [conditions, setConditions] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
+  const [routes, setRoutes] = useState<any[]>([]);
   const [confirmations, setConfirmations] = useState<any[]>([]);
   const [shipments, setShipments] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [docs, setDocs] = useState<any[]>([]);
+  const [negotiations, setNegotiations] = useState<any[]>([]);
+  
+  // Notification States
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [activeNotification, setActiveNotification] = useState<any | null>(null);
+  const [dashboardSummary, setDashboardSummary] = useState<any>(null);
+  const [notificationScenario, setNotificationScenario] = useState<any | null>(null);
+  const [editingFacility, setEditingFacility] = useState<any | null>(null);
+  const [editingCondition, setEditingCondition] = useState<any | null>(null);
+  const [editingInventory, setEditingInventory] = useState<any | null>(null);
   
   // Forms Inputs
   const [profileForm, setProfileForm] = useState({
@@ -59,29 +71,41 @@ export default function SupplierPortal() {
   });
 
   const [inventoryForm, setInventoryForm] = useState({
-    product_id: "MAT-001",
+    product_id: "",
     facility_id: "",
-    quantity: 5000,
-    safety_stock: 1000,
-    allocation_limit: 3000
+    quantity: 0,
+    safety_stock: 0,
+    allocation_limit: 0
   });
+
+
+  const [routeForm, setRouteForm] = useState({
+    id: "",
+    origin: "",
+    destination: "",
+    mode: "OCEAN",
+    lead_time_days: 0,
+    cost_per_unit: 0,
+    capacity_limit: 0
+  });
+
+  const [counterForm, setCounterForm] = useState<{ [key: number]: any }>({});
+
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    const savedToken = localStorage.getItem("ares_token");
     const role = localStorage.getItem("ares_role");
     const savedOrg = localStorage.getItem("ares_org");
 
-    if (!savedToken || !role || !role.startsWith("SUPPLIER")) {
+    if (!role || !role.startsWith("SUPPLIER")) {
       router.replace("/login");
       return;
     }
 
-    setToken(savedToken);
     setOrgId(savedOrg);
-    loadSupplierData(savedToken, savedOrg!);
+    loadSupplierData("", savedOrg!);
   }, []);
 
   const loadSupplierData = async (jwt: string, supplierOrgId: string) => {
@@ -91,24 +115,15 @@ export default function SupplierPortal() {
       const headers = { Authorization: `Bearer ${jwt}` };
       
       // 1. Fetch organization status
-      // We list all suppliers as buyer, but here we can check me or call our specific supplier query
-      const meRes = await fetch("http://localhost:8000/api/auth/me", { headers });
-      if (meRes.ok) {
-        const me = await meRes.json();
-        // Fetch organization details
-        const orgRes = await fetch(`http://localhost:8000/api/suppliers`, { headers });
-        if (orgRes.ok) {
-          const orgsList = await orgRes.json();
-          const myOrg = orgsList.find((o: any) => o.id === supplierOrgId);
-          if (myOrg) {
-            setOnboardingStatus(myOrg.onboarding_status);
-            setOrgName(myOrg.name);
-          }
-        }
+      const orgRes = await fetch("/api/suppliers/me", { credentials: 'include' });
+      if (orgRes.ok) {
+        const myOrg = await orgRes.json();
+        setOnboardingStatus(myOrg.onboarding_status);
+        setOrgName(myOrg.name);
       }
 
       // 2. Fetch Supplier Profile (accessible in any onboarding status)
-      const profRes = await fetch("http://localhost:8000/api/suppliers/profile", { headers });
+      const profRes = await fetch("/api/suppliers/profile", { credentials: 'include' });
       if (profRes.ok) {
         const pData = await profRes.json();
         setProfile(pData);
@@ -129,29 +144,45 @@ export default function SupplierPortal() {
       const isApproved = onboardingStatus === "APPROVED" || onboardingStatus === "ACTIVE";
       
       // Fetch Confirmations / Disruption requests
-      const confRes = await fetch("http://localhost:8000/api/tariffs/confirmations/all", { headers });
+      const confRes = await fetch("/api/tariffs/confirmations/all", { credentials: 'include' });
       if (confRes.ok) setConfirmations(await confRes.json());
 
       if (isApproved) {
-        const facRes = await fetch("http://localhost:8000/api/suppliers/facilities", { headers });
+        const facRes = await fetch("/api/suppliers/facilities", { credentials: 'include' });
         if (facRes.ok) setFacilities(await facRes.json());
 
-        const condRes = await fetch("http://localhost:8000/api/suppliers/conditions", { headers });
+        const prodRes = await fetch("/api/suppliers/products", { credentials: 'include' });
+        if (prodRes.ok) setProducts(await prodRes.json());
+
+        const condRes = await fetch("/api/suppliers/conditions", { credentials: 'include' });
         if (condRes.ok) setConditions(await condRes.json());
 
-        const invRes = await fetch("http://localhost:8000/api/suppliers/inventory", { headers });
+        const invRes = await fetch("/api/suppliers/inventory", { credentials: 'include' });
         if (invRes.ok) setInventory(await invRes.json());
+
+        const negRes = await fetch("/api/suppliers/negotiations", { credentials: 'include' });
+        if (negRes.ok) setNegotiations(await negRes.json());
+
+        const routeRes = await fetch("/api/suppliers/routes", { credentials: 'include' });
+        if (routeRes.ok) setRoutes(await routeRes.json());
       }
 
-      // Fetch Mock/Secondary logs dynamically
-      const shipRes = await fetch("http://localhost:8000/api/suppliers/shipments", { headers });
+      // Fetch Dashboard Summary
+      const summaryRes = await fetch("/api/suppliers/dashboard-summary", { credentials: 'include' });
+      if (summaryRes.ok) setDashboardSummary(await summaryRes.json());
+
+      // Fetch Secondary logs dynamically (Shipments, Docs return empty now)
+      const shipRes = await fetch("/api/suppliers/shipments", { credentials: 'include' });
       if (shipRes.ok) setShipments(await shipRes.json());
 
-      const disRes = await fetch("http://localhost:8000/api/suppliers/disruptions", { headers });
+      const disRes = await fetch("/api/suppliers/disruptions", { credentials: 'include' });
       if (disRes.ok) setIncidents(await disRes.json());
 
-      const docRes = await fetch("http://localhost:8000/api/suppliers/documents", { headers });
+      const docRes = await fetch("/api/suppliers/documents", { credentials: 'include' });
       if (docRes.ok) setDocs(await docRes.json());
+      
+      const notifRes = await fetch("/api/suppliers/notifications", { credentials: 'include' });
+      if (notifRes.ok) setNotifications(await notifRes.json());
 
     } catch (err: any) {
       // Quietly ignore operational 403s on loading since they are expected for pending orgs
@@ -172,7 +203,7 @@ export default function SupplierPortal() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("http://localhost:8000/api/suppliers/profile", {
+      const res = await fetch("/api/suppliers/profile", {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -195,7 +226,7 @@ export default function SupplierPortal() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("http://localhost:8000/api/suppliers/facilities", {
+      const res = await fetch("/api/suppliers/facilities", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -219,6 +250,45 @@ export default function SupplierPortal() {
     }
   };
 
+  const handleDeleteFacility = async (facId: string) => {
+    if (!token || !orgId) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/suppliers/facilities/${facId}`, {
+        method: "DELETE",
+        credentials: "include"
+      });
+      if (!res.ok) throw new Error("Failed to delete facility");
+      setSuccess("Facility removed.");
+      loadSupplierData(token, orgId);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleUpdateFacility = async (facId: string, updatedData: any) => {
+    if (!token || !orgId) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/suppliers/facilities/${facId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updatedData)
+      });
+      if (!res.ok) throw new Error("Failed to update facility");
+      setSuccess("Facility updated.");
+      setEditingFacility(null);
+      loadSupplierData(token, orgId);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   // Submit Sourcing Condition
   const handleAddCondition = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,7 +296,7 @@ export default function SupplierPortal() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("http://localhost:8000/api/suppliers/conditions", {
+      const res = await fetch("/api/suppliers/conditions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -242,6 +312,28 @@ export default function SupplierPortal() {
     }
   };
 
+  const handleUpdateCondition = async (condId: number, updatedData: any) => {
+    if (!token || !orgId) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/suppliers/conditions/${condId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updatedData)
+      });
+      if (!res.ok) throw new Error("Failed to update condition");
+      setSuccess("Condition updated.");
+      setEditingCondition(null);
+      loadSupplierData(token, orgId);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   // Submit Inventory Stock
   const handleAddInventory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,7 +341,7 @@ export default function SupplierPortal() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("http://localhost:8000/api/suppliers/inventory", {
+      const res = await fetch("/api/suppliers/inventory", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -265,13 +357,60 @@ export default function SupplierPortal() {
     }
   };
 
+  const handleUpdateInventory = async (invId: number, updatedData: any) => {
+    if (!token || !orgId) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/suppliers/inventory/${invId}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updatedData)
+      });
+      if (!res.ok) throw new Error("Failed to update inventory");
+      setSuccess("Inventory updated.");
+      setEditingInventory(null);
+      loadSupplierData(token, orgId);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleAddRoute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !orgId) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/suppliers/routes", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(routeForm)
+      });
+      if (!res.ok) throw new Error("Failed to post route");
+      setSuccess("Route recorded.");
+      setRouteForm({
+        id: "", origin: "", destination: "", mode: "OCEAN", lead_time_days: 0, cost_per_unit: 0, capacity_limit: 0
+      });
+      loadSupplierData(token, orgId);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   // Submit Disruption Exposure Confirmation
   const handleConfirmDisruption = async (confId: number, statusStr: "CONFIRMED_AFFECTED" | "NOT_AFFECTED", notes: string) => {
     if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
-      const res = await fetch(`http://localhost:8000/api/tariffs/confirmations/${confId}`, {
+      const res = await fetch(`/api/tariffs/confirmations/${confId}`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -290,6 +429,71 @@ export default function SupplierPortal() {
     }
   };
 
+  const handleReadNotification = async (notifId: number) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/suppliers/notifications/${notifId}/read`, {
+        method: "PUT",
+        credentials: "include"
+      });
+      if (res.ok) {
+        setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, is_read: true } : n));
+        
+        // Also fetch the scenario details
+        const scenRes = await fetch(`/api/suppliers/notifications/${notifId}/scenario`, {
+          credentials: "include"
+        });
+        if (scenRes.ok) {
+          setNotificationScenario(await scenRes.json());
+        }
+      }
+    } catch (err) {
+      console.error("Failed to read notification", err);
+    }
+  };
+
+  const handleNegotiationAction = async (negId: number, action: 'accept' | 'counter' | 'decline', counterData?: any) => {
+    const currentToken = token || (typeof window !== "undefined" ? localStorage.getItem("ares_token") || "" : "");
+    setError("");
+    setSuccess("");
+    try {
+      let body: any = {};
+      if (action === 'accept') {
+        body = {
+          signature_text: `ESIGN-${orgId}-${Date.now()}`,
+          signer_name: "Authorized Supplier Representative",
+          signer_title: "Operations Director"
+        };
+      } else if (action === 'counter') {
+        body = {
+          counter_quantity: counterData?.proposed_quantity ? Number(counterData.proposed_quantity) : undefined,
+          counter_unit_price: counterData?.price ? Number(counterData.price) : undefined,
+          counter_lead_days: counterData?.lead_time ? Number(counterData.lead_time) : undefined,
+          counter_notes: "Counter-proposal submitted via supplier portal"
+        };
+      } else if (action === 'decline') {
+        body = {
+          decline_reason: "Capacity constraints at local manufacturing plant"
+        };
+      }
+
+      const res = await fetch(`/api/suppliers/negotiations/${negId}/${action}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${currentToken}`,
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(`Failed to ${action} negotiation proposal`);
+      setSuccess(`Negotiation proposal successfully ${action}ed.`);
+      loadSupplierData(currentToken, orgId || "");
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const isApproved = onboardingStatus === "APPROVED" || onboardingStatus === "ACTIVE";
 
   return (
@@ -299,25 +503,27 @@ export default function SupplierPortal() {
       <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-pink-200/40 blur-[120px] pointer-events-none"></div>
 
       {/* SIDEBAR NAVIGATION */}
-      <aside className="w-64 bg-white/60 backdrop-blur-xl border border-white m-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between relative z-10">
-        <div>
-          <div className="p-6 border-b border-slate-100">
-            <div className="flex items-center space-x-2">
-              <div className="bg-indigo-100 p-1.5 rounded-lg border border-indigo-200">
-                <Users className="h-5 w-5 text-indigo-600" />
-              </div>
+      <aside className="w-64 bg-white/60 backdrop-blur-xl border border-white m-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col justify-between relative z-10 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="p-6 border-b border-slate-100 flex-shrink-0">
+            <div className="flex items-center space-x-3">
+              <img src="/ares-logo.svg" alt="ARES Logo" className="h-8 w-8 object-contain" />
               <span className="font-bold text-xl tracking-tight text-slate-800">ARES Supplier</span>
             </div>
             <p className="text-sm text-indigo-500 font-semibold mt-1">Supplier Cockpit</p>
           </div>
           
-          <nav className="p-4 space-y-1">
+          <nav className="p-4 space-y-1 overflow-y-auto custom-scrollbar flex-1">
             {[
               { id: "overview", label: "Overview", icon: Shield },
               { id: "company", label: "Company Profile", icon: User },
+              { id: "products", label: "Provided Products", icon: Package },
+              { id: "notifications", label: "Notifications", icon: Bell },
+              { id: "negotiations", label: "Negotiations", icon: Users },
               { id: "facilities", label: "Facilities", icon: Building, restricted: true },
               { id: "catalog", label: "Catalog Conditions", icon: Wrench, restricted: true },
               { id: "inventory", label: "Inventory Stock", icon: Package, restricted: true },
+              { id: "routes", label: "Routes", icon: Truck, restricted: true },
               { id: "shipments", label: "Shipments", icon: Truck },
               { id: "disruptions", label: "Disruptions", icon: AlertOctagon },
               { id: "documents", label: "Documents", icon: FileText }
@@ -371,8 +577,7 @@ export default function SupplierPortal() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <button 
-              onClick={() => token && orgId && loadSupplierData(token, orgId)}
+            <button onClick={() => token && orgId && loadSupplierData(token, orgId)}
               disabled={loading}
               className="p-2 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm"
             >
@@ -403,21 +608,243 @@ export default function SupplierPortal() {
           
           {/* Security Gate Notice for Pending Suppliers */}
           {!isApproved && (
-            <div className="p-4 bg-amber-50 border border-amber-150 text-amber-800 text-sm rounded mb-4 flex items-start space-x-2">
-              <Shield className="h-4 w-4 mt-0.5" />
+            <div className="p-4 bg-amber-50 border border-amber-150 text-amber-800 text-sm rounded mb-4 flex items-start space-x-2 shadow-sm">
+              <Shield className="h-4 w-4 mt-0.5 flex-shrink-0" />
               <div>
                 <span className="font-bold">Operational Isolation Lockdown</span>
-                <p className="mt-0.5">Your organization onboarding status is currently <b>{onboardingStatus}</b>. Operational features (facilities mapping, catalog conditions, inventory stocks) are restricted until approved. Please update your <b>Company Profile</b> to submit details for Buyer review.</p>
+                <p className="mt-0.5">Your organization onboarding status is currently <b>{onboardingStatus}</b>. Operational features (facilities mapping, catalog conditions, inventory stocks) are restricted by the system until approved.</p>
+                <div className="mt-2 pt-2 border-t border-amber-200 text-amber-900">
+                  <span className="font-semibold block text-xs uppercase tracking-widest mb-1">Hackathon Demo Instructions</span>
+                  <p>To unlock these features, you must sign out (using the button at the bottom left) and log back in using a <b>Buyer Admin</b> account. Then, navigate to the <b>Suppliers</b> tab on the Buyer portal and click <b>Approve</b> next to your organization.</p>
+                </div>
               </div>
             </div>
           )}
         </div>
 
 
-          
+          {/* TAB: NOTIFICATIONS */}
+          {activeTab === "notifications" && (
+            <div className="space-y-6">
+              <div className="bg-white border border-slate-200 rounded p-6 shadow-sm">
+                <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center">
+                  <Bell className="h-4 w-4 mr-2" />
+                  Supplier Notifications
+                </h3>
+                
+                {notifications.length === 0 ? (
+                  <p className="text-slate-500 text-sm">No notifications available.</p>
+                ) : (
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                    {notifications.map((notif) => (
+                      <div 
+                        key={notif.id}
+                        onClick={() => {
+                          setActiveNotification(notif);
+                          if (!notif.is_read) handleReadNotification(notif.id);
+                          else {
+                            fetch(`/api/suppliers/notifications/${notif.id}/scenario`, { credentials: "include" })
+                              .then(res => res.json())
+                              .then(data => setNotificationScenario(data));
+                          }
+                        }}
+                        className={`p-4 border rounded cursor-pointer transition-colors ${
+                          activeNotification?.id === notif.id ? "border-indigo-500 bg-indigo-50" :
+                          notif.is_read ? "border-slate-200 bg-white hover:bg-slate-50" : "border-amber-300 bg-amber-50 hover:bg-amber-100"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <h4 className={`font-bold ${notif.is_read ? "text-slate-800" : "text-amber-900"}`}>{notif.title}</h4>
+                          {!notif.is_read && <span className="h-2.5 w-2.5 rounded-full bg-amber-500 mt-1 flex-shrink-0" />}
+                        </div>
+                        <p className="text-sm text-slate-600 mt-1 line-clamp-2">{notif.message}</p>
+                        <p className="text-[10px] text-slate-400 mt-2 uppercase font-mono tracking-wider">{new Date(notif.created_at).toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {activeNotification && notificationScenario && (
+                <div className="bg-white border border-slate-200 rounded p-6 shadow-sm">
+                  <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">
+                    Approved Recovery Plan Details
+                  </h3>
+                  
+                  <div className="bg-indigo-50 rounded p-4 mb-6 border border-indigo-100">
+                    <p className="text-xs uppercase font-bold text-indigo-500 tracking-wider mb-1">Disruption Context</p>
+                    <p className="font-bold text-slate-800">{notificationScenario.disruption_event}</p>
+                    <p className="text-sm text-slate-600 mt-1">{notificationScenario.objective}</p>
+                  </div>
+                  
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-slate-700 mb-3 border-b pb-2">Assigned Actions for Your Organization</h4>
+                  {notificationScenario.my_actions?.length === 0 ? (
+                    <p className="text-slate-500 text-sm italic">No specific supply chain actions assigned to you in this scenario.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {notificationScenario.my_actions.map((act: any, idx: number) => (
+                        <div key={idx} className="bg-slate-50 border border-slate-200 rounded p-4 flex justify-between items-center">
+                          <div>
+                            <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-xs font-bold uppercase rounded inline-block mb-2">
+                              {act.action_type.replace(/_/g, " ")}
+                            </span>
+                            <p className="text-sm text-slate-700">Product: <b className="text-slate-900 font-mono bg-white px-1 border rounded">{act.product_id}</b></p>
+                            {act.route_id && <p className="text-sm text-slate-700 mt-1">Route: <b className="text-slate-900 font-mono bg-white px-1 border rounded">{act.route_id}</b></p>}
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs text-slate-500 uppercase font-bold block mb-1">Target Quantity</span>
+                            <span className="text-lg font-black text-emerald-600">{act.quantity.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+
+          {/* TAB: NEGOTIATIONS */}
+          {activeTab === "negotiations" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center bg-white p-6 rounded border border-slate-200 shadow-sm">
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Negotiations</h3>
+                  <p className="text-sm text-slate-500 mt-1">Review, accept, or counter recovery proposals from buyers.</p>
+                </div>
+              </div>
+
+              {negotiations.length === 0 ? (
+                <div className="text-center py-12 bg-slate-50 border border-slate-200 rounded">
+                  <p className="text-slate-500">No active negotiations.</p>
+                </div>
+              ) : (
+                <div className="grid gap-6">
+                  {negotiations.map(neg => (
+                    <div key={neg.id} className="bg-white border border-slate-200 rounded p-6 shadow-sm">
+                      <div className="flex justify-between mb-4">
+                        <div>
+                          <h4 className="font-bold text-slate-800">Scenario #{neg.scenario_id}</h4>
+                          <p className="text-sm text-slate-500">Action: {neg.action_type}</p>
+                        </div>
+                        <span className={`px-2 py-1 text-xs font-bold rounded uppercase h-fit ${
+                          neg.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                          neg.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' :
+                          neg.status === 'COUNTERED' ? 'bg-blue-100 text-blue-700' :
+                          'bg-slate-100 text-slate-700'
+                        }`}>
+                          {neg.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4 mb-4">
+                        <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                          <span className="text-xs font-bold text-slate-400 block mb-1">Requested Qty</span>
+                          <span className="text-lg font-black text-slate-800">{neg.proposed_quantity || 'N/A'}</span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                          <span className="text-xs font-bold text-slate-400 block mb-1">Price</span>
+                          <span className="text-lg font-black text-slate-800">${neg.price || 'N/A'}</span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                          <span className="text-xs font-bold text-slate-400 block mb-1">Lead Time</span>
+                          <span className="text-lg font-black text-slate-800">{neg.lead_time || 'N/A'} days</span>
+                        </div>
+                      </div>
+
+                      {neg.status === 'PENDING' && (
+                        <div className="border-t border-slate-100 pt-4">
+                          <h5 className="text-sm font-bold text-slate-700 mb-3">Your Response</h5>
+                          <div className="flex items-end gap-4 mb-4">
+                            <div className="flex-1">
+                              <label className="block text-xs font-semibold text-slate-500 mb-1">Counter Qty</label>
+                              <input 
+                                type="number" 
+                                className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm"
+                                value={counterForm[neg.id]?.proposed_quantity || neg.proposed_quantity || ''}
+                                onChange={e => setCounterForm(prev => ({...prev, [neg.id]: {...prev[neg.id], proposed_quantity: parseInt(e.target.value)}}))}
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <label className="block text-xs font-semibold text-slate-500 mb-1">Counter Price</label>
+                              <input 
+                                type="number" 
+                                className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm"
+                                value={counterForm[neg.id]?.price || neg.price || ''}
+                                onChange={e => setCounterForm(prev => ({...prev, [neg.id]: {...prev[neg.id], price: parseFloat(e.target.value)}}))}
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <label className="block text-xs font-semibold text-slate-500 mb-1">Counter Lead Time</label>
+                              <input 
+                                type="number" 
+                                className="w-full border border-slate-300 rounded px-3 py-1.5 text-sm"
+                                value={counterForm[neg.id]?.lead_time || neg.lead_time || ''}
+                                onChange={e => setCounterForm(prev => ({...prev, [neg.id]: {...prev[neg.id], lead_time: parseInt(e.target.value)}}))}
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="flex gap-3">
+                            <button 
+                              onClick={() => handleNegotiationAction(neg.id, 'accept')}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-4 py-2 rounded transition-colors"
+                            >
+                              Accept (E-Sign)
+                            </button>
+                            <button 
+                              onClick={() => handleNegotiationAction(neg.id, 'counter', counterForm[neg.id])}
+                              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm px-4 py-2 rounded transition-colors"
+                            >
+                              Submit Counter
+                            </button>
+                            <button 
+                              onClick={() => handleNegotiationAction(neg.id, 'decline')}
+                              className="bg-red-50 text-red-600 hover:bg-red-100 font-bold text-sm px-4 py-2 rounded transition-colors ml-auto border border-red-200"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* TAB: OVERVIEW */}
+
           {activeTab === "overview" && (
             <div className="space-y-6">
+              
+              {dashboardSummary && (
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-white border border-slate-200 rounded p-4 shadow-sm flex items-center space-x-4">
+                    <div className="bg-amber-100 p-3 rounded-full"><AlertOctagon className="h-6 w-6 text-amber-600" /></div>
+                    <div>
+                      <p className="text-sm text-slate-500 uppercase font-bold tracking-wide">Active Alerts</p>
+                      <p className="text-2xl font-black text-slate-800">{dashboardSummary.active_alerts}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded p-4 shadow-sm flex items-center space-x-4">
+                    <div className="bg-emerald-100 p-3 rounded-full"><Package className="h-6 w-6 text-emerald-600" /></div>
+                    <div>
+                      <p className="text-sm text-slate-500 uppercase font-bold tracking-wide">Inventory Items</p>
+                      <p className="text-2xl font-black text-slate-800">{dashboardSummary.inventory_items}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded p-4 shadow-sm flex items-center space-x-4">
+                    <div className="bg-indigo-100 p-3 rounded-full"><Bell className="h-6 w-6 text-indigo-600" /></div>
+                    <div>
+                      <p className="text-sm text-slate-500 uppercase font-bold tracking-wide">Unread Notifs</p>
+                      <p className="text-2xl font-black text-slate-800">{dashboardSummary.unread_notifications}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {/* Active tariff alerts */}
               <div className="bg-white border border-slate-200 rounded p-6 shadow-sm">
@@ -604,19 +1031,47 @@ export default function SupplierPortal() {
                 <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Registered Facilities</h3>
                 <div className="space-y-3">
                   {facilities.map(f => (
-                    <div key={f.id} className="p-4 bg-slate-50 border border-slate-200 rounded flex justify-between items-center text-sm">
-                      <div>
-                        <span className="font-bold text-slate-900 text-base">{f.name}</span>
-                        <div className="flex space-x-4 mt-1 text-slate-500">
-                          <span>ID: <b>{f.id}</b></span>
-                          <span>Type: <b>{f.type}</b></span>
-                          <span>Location: <b>{f.location}</b></span>
+                    <div key={f.id} className="p-4 bg-slate-50 border border-slate-200 rounded flex flex-col gap-2 text-sm">
+                      {editingFacility?.id === f.id ? (
+                        <div className="flex flex-col gap-2">
+                          <input type="text" value={editingFacility.name} onChange={(e) => setEditingFacility({...editingFacility, name: e.target.value})} className="rounded border px-2 py-1" placeholder="Name" />
+                          <input type="text" value={editingFacility.location} onChange={(e) => setEditingFacility({...editingFacility, location: e.target.value})} className="rounded border px-2 py-1" placeholder="Location" />
+                          <select value={editingFacility.type} onChange={(e) => setEditingFacility({...editingFacility, type: e.target.value})} className="rounded border px-2 py-1">
+                            <option value="MANUFACTURING">MANUFACTURING</option>
+                            <option value="WAREHOUSE">WAREHOUSE</option>
+                            <option value="DISTRIBUTION">DISTRIBUTION</option>
+                          </select>
+                          <div className="flex gap-2 items-center">
+                            <input type="number" value={editingFacility.capacity_utilization} onChange={(e) => setEditingFacility({...editingFacility, capacity_utilization: parseFloat(e.target.value)})} className="rounded border px-2 py-1 w-24" placeholder="Utilization %" />
+                            <input type="number" value={editingFacility.emergency_capacity} onChange={(e) => setEditingFacility({...editingFacility, emergency_capacity: parseFloat(e.target.value)})} className="rounded border px-2 py-1 w-24" placeholder="Emerg Cap" />
+                          </div>
+                          <div className="flex gap-2 justify-end mt-2">
+                            <button onClick={() => setEditingFacility(null)} className="px-3 py-1 bg-slate-200 text-slate-700 rounded hover:bg-slate-300">Cancel</button>
+                            <button onClick={() => handleUpdateFacility(f.id, editingFacility)} className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700">Save</button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="block font-semibold">Utilization</span>
-                        <span className="font-bold text-slate-800">{f.capacity_utilization}%</span>
-                      </div>
+                      ) : (
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="font-bold text-slate-900 text-base">{f.name}</span>
+                            <div className="flex space-x-4 mt-1 text-slate-500">
+                              <span>ID: <b>{f.id}</b></span>
+                              <span>Type: <b>{f.type}</b></span>
+                              <span>Location: <b>{f.location}</b></span>
+                            </div>
+                          </div>
+                          <div className="text-right flex flex-col items-end gap-1">
+                            <div>
+                              <span className="block font-semibold">Utilization</span>
+                              <span className="font-bold text-slate-800">{f.capacity_utilization}%</span>
+                            </div>
+                            <div className="flex gap-2 mt-2">
+                              <button onClick={() => setEditingFacility(f)} className="text-xs text-indigo-600 hover:underline">Edit</button>
+                              <button onClick={() => { if(confirm("Delete facility?")) handleDeleteFacility(f.id); }} className="text-xs text-red-600 hover:underline">Delete</button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {facilities.length === 0 && (
@@ -723,10 +1178,30 @@ export default function SupplierPortal() {
                       {conditions.map(c => (
                         <tr key={c.id} className="text-slate-700">
                           <td className="py-3 font-semibold text-slate-900">{c.product?.name || c.product_id}</td>
-                          <td className="py-3 font-bold">${c.base_price}</td>
-                          <td className="py-3">{c.lead_time_days} days</td>
-                          <td className="py-3 font-mono">{c.moq} units</td>
-                          <td className="py-3 font-mono font-bold text-indigo-650">{c.capacity_per_week} / week</td>
+                          {editingCondition?.id === c.id ? (
+                            <>
+                              <td className="py-2"><input type="number" step="0.01" value={editingCondition.base_price} onChange={(e) => setEditingCondition({...editingCondition, base_price: parseFloat(e.target.value)})} className="w-20 border rounded px-1" /></td>
+                              <td className="py-2"><input type="number" value={editingCondition.lead_time_days} onChange={(e) => setEditingCondition({...editingCondition, lead_time_days: parseInt(e.target.value)})} className="w-16 border rounded px-1" /></td>
+                              <td className="py-2"><input type="number" value={editingCondition.moq} onChange={(e) => setEditingCondition({...editingCondition, moq: parseInt(e.target.value)})} className="w-16 border rounded px-1" /></td>
+                              <td className="py-2">
+                                <div className="flex gap-2">
+                                  <input type="number" value={editingCondition.capacity_per_week} onChange={(e) => setEditingCondition({...editingCondition, capacity_per_week: parseInt(e.target.value)})} className="w-20 border rounded px-1" />
+                                  <button onClick={() => handleUpdateCondition(c.id, editingCondition)} className="text-indigo-600 font-bold hover:underline">Save</button>
+                                  <button onClick={() => setEditingCondition(null)} className="text-slate-500 hover:underline">Cancel</button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="py-3 font-bold">${c.base_price}</td>
+                              <td className="py-3">{c.lead_time_days} days</td>
+                              <td className="py-3 font-mono">{c.moq} units</td>
+                              <td className="py-3 font-mono font-bold text-indigo-650 flex justify-between items-center group">
+                                <span>{c.capacity_per_week} / week</span>
+                                <button onClick={() => setEditingCondition(c)} className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity underline">Edit</button>
+                              </td>
+                            </>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -820,9 +1295,28 @@ export default function SupplierPortal() {
                         <tr key={i.id} className="text-slate-700">
                           <td className="py-3 font-semibold text-slate-900">{i.product?.name || i.product_id}</td>
                           <td className="py-3">{i.facility?.name || i.facility_id || "Unspecified"}</td>
-                          <td className="py-3 font-bold font-mono text-slate-800">{i.quantity}</td>
-                          <td className="py-3 font-mono text-slate-500">{i.safety_stock}</td>
-                          <td className="py-3 font-mono font-bold text-indigo-650">{i.allocation_limit}</td>
+                          {editingInventory?.id === i.id ? (
+                            <>
+                              <td className="py-2"><input type="number" value={editingInventory.quantity} onChange={(e) => setEditingInventory({...editingInventory, quantity: parseInt(e.target.value)})} className="w-20 border rounded px-1" /></td>
+                              <td className="py-2"><input type="number" value={editingInventory.safety_stock} onChange={(e) => setEditingInventory({...editingInventory, safety_stock: parseInt(e.target.value)})} className="w-20 border rounded px-1" /></td>
+                              <td className="py-2">
+                                <div className="flex gap-2 items-center">
+                                  <input type="number" value={editingInventory.allocation_limit} onChange={(e) => setEditingInventory({...editingInventory, allocation_limit: parseInt(e.target.value)})} className="w-20 border rounded px-1" />
+                                  <button onClick={() => handleUpdateInventory(i.id, editingInventory)} className="text-indigo-600 font-bold hover:underline">Save</button>
+                                  <button onClick={() => setEditingInventory(null)} className="text-slate-500 hover:underline">Cancel</button>
+                                </div>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="py-3 font-bold font-mono text-slate-800">{i.quantity}</td>
+                              <td className="py-3 font-mono text-slate-500">{i.safety_stock}</td>
+                              <td className="py-3 font-mono font-bold text-indigo-650 flex justify-between items-center group">
+                                <span>{i.allocation_limit}</span>
+                                <button onClick={() => setEditingInventory(i)} className="text-xs text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity underline">Edit</button>
+                              </td>
+                            </>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -893,69 +1387,170 @@ export default function SupplierPortal() {
             </div>
           )}
 
-          {/* TAB: SHIPMENTS (Mocked) */}
-          {activeTab === "shipments" && (
-            <div className="bg-white border border-slate-200 rounded shadow-sm p-6">
-              <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Active Shipments (SAP OData Mock)</h3>
-              <div className="space-y-4 text-sm">
-                {shipments.map((ship) => (
-                  <div key={ship.id} className="p-4 bg-slate-50 border border-slate-200 rounded flex justify-between items-center">
+          {/* TAB: ROUTES */}
+          {activeTab === "routes" && isApproved && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Routes Table */}
+              <div className="lg:col-span-2 bg-white border border-slate-200 rounded shadow-sm p-6">
+                <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Sourcing Routes</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 font-semibold uppercase">
+                        <th className="pb-3">Route ID</th>
+                        <th className="pb-3">Origin</th>
+                        <th className="pb-3">Destination</th>
+                        <th className="pb-3">Mode</th>
+                        <th className="pb-3">Lead Time</th>
+                        <th className="pb-3">Cost/Unit</th>
+                        <th className="pb-3">Capacity limit</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {routes.map(r => (
+                        <tr key={r.id} className="text-slate-700">
+                          <td className="py-3 font-semibold text-slate-900">{r.id}</td>
+                          <td className="py-3">{r.origin}</td>
+                          <td className="py-3">{r.destination}</td>
+                          <td className="py-3 text-xs font-bold text-slate-500 bg-slate-100 rounded px-2 w-fit">{r.mode}</td>
+                          <td className="py-3 font-mono">{r.lead_time_days} days</td>
+                          <td className="py-3 font-mono font-bold">${r.cost_per_unit}</td>
+                          <td className="py-3 font-mono font-bold text-indigo-650">{r.capacity_limit}</td>
+                        </tr>
+                      ))}
+                      {routes.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="text-sm text-slate-400 text-center py-4">No logistics routes registered.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Add Route Form */}
+              <div className="bg-white border border-slate-200 rounded shadow-sm p-6 h-fit">
+                <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Add Logistics Route</h3>
+                <form onSubmit={handleAddRoute} className="space-y-4 text-sm">
+                  <div>
+                    <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Route ID / Code</label>
+                    <input 
+                      type="text" required
+                      value={routeForm.id}
+                      onChange={(e) => setRouteForm({...routeForm, id: e.target.value})}
+                      className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                      placeholder="e.g. RT-OCEAN-CN-DE"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <span className="font-bold text-slate-950">{ship.id}</span>
-                      <p className="text-slate-500 mt-1">Carrier: {ship.carrier || "DHL"} | Route: {ship.origin} → {ship.destination}</p>
+                      <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Origin</label>
+                      <input 
+                        type="text" required
+                        value={routeForm.origin}
+                        onChange={(e) => setRouteForm({...routeForm, origin: e.target.value})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                      />
                     </div>
-                    <div className="text-right">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase ${
-                        ship.status === "DELIVERED" ? "bg-emerald-50 text-emerald-700 border border-emerald-150" : "bg-indigo-50 text-indigo-700 border border-indigo-150"
-                      }`}>
-                        {ship.status}
-                      </span>
-                      <span className="block text-xs text-slate-400 mt-1">ETA: {ship.eta}</span>
+                    <div>
+                      <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Destination</label>
+                      <input 
+                        type="text" required
+                        value={routeForm.destination}
+                        onChange={(e) => setRouteForm({...routeForm, destination: e.target.value})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                      />
                     </div>
                   </div>
-                ))}
+                  <div>
+                    <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Transport Mode</label>
+                    <select 
+                      value={routeForm.mode}
+                      onChange={(e) => setRouteForm({...routeForm, mode: e.target.value})}
+                      className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                    >
+                      <option value="OCEAN">Ocean</option>
+                      <option value="AIR">Air</option>
+                      <option value="ROAD">Road</option>
+                      <option value="RAIL">Rail</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Lead Time</label>
+                      <input 
+                        type="number" required
+                        value={routeForm.lead_time_days}
+                        onChange={(e) => setRouteForm({...routeForm, lead_time_days: parseInt(e.target.value)})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                        placeholder="days"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Cost</label>
+                      <input 
+                        type="number" required step="0.01"
+                        value={routeForm.cost_per_unit}
+                        onChange={(e) => setRouteForm({...routeForm, cost_per_unit: parseFloat(e.target.value)})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                        placeholder="$/unit"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Cap Limit</label>
+                      <input 
+                        type="number" required
+                        value={routeForm.capacity_limit}
+                        onChange={(e) => setRouteForm({...routeForm, capacity_limit: parseInt(e.target.value)})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                        placeholder="units"
+                      />
+                    </div>
+                  </div>
+                  <button 
+                    type="submit"
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2 rounded transition-colors"
+                  >
+                    Add Route
+                  </button>
+                </form>
               </div>
             </div>
           )}
 
-          {/* TAB: DISRUPTIONS (Mocked list of incidents) */}
+          {/* TAB: SHIPMENTS */}
+          {activeTab === "shipments" && (
+            <div className="bg-white border border-slate-200 rounded shadow-sm p-6 text-center text-slate-500 py-12">
+              <Truck className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+              <p>SAP Logistics module not configured for this prototype instance.</p>
+            </div>
+          )}
+
+          {/* TAB: DISRUPTIONS */}
           {activeTab === "disruptions" && (
             <div className="bg-white border border-slate-200 rounded p-6 shadow-sm">
-              <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Active Incidents Log</h3>
+              <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Disruption Confirmations log</h3>
               <div className="space-y-3 text-sm">
-                {incidents.map(d => (
-                  <div key={d.id} className="p-4 border rounded bg-slate-50 border-slate-200 flex justify-between items-center">
+                {confirmations.map(c => (
+                  <div key={c.id} className="p-4 border rounded bg-slate-50 border-slate-200 flex justify-between items-center">
                     <div>
-                      <span className="font-bold text-slate-950">{d.title}</span>
-                      <p className="text-slate-500 mt-0.5">Incident ID: {d.id} | Severity: <b>{d.severity}</b></p>
+                      <span className="font-bold text-slate-950">{c.tariff_event?.title}</span>
+                      <p className="text-slate-500 mt-0.5">Event ID: {c.tariff_event_id} | Status: <b>{c.status.replace("_", " ")}</b></p>
                     </div>
-                    <span className="text-xs font-bold text-slate-500 tracking-wider uppercase border rounded px-2 py-0.5 bg-white shadow-xs">
-                      {d.status}
-                    </span>
                   </div>
                 ))}
+                {confirmations.length === 0 && (
+                  <p className="text-slate-400 text-center">No disruptions logged.</p>
+                )}
               </div>
             </div>
           )}
 
-          {/* TAB: DOCUMENTS (Mocked ISO / compliance docs) */}
+          {/* TAB: DOCUMENTS */}
           {activeTab === "documents" && (
-            <div className="bg-white border border-slate-200 rounded p-6 shadow-sm">
-              <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Compliance Document Repository</h3>
-              <div className="space-y-3 text-sm">
-                {docs.map(doc => (
-                  <div key={doc.id} className="p-4 border rounded bg-slate-50 border-slate-200 flex justify-between items-center">
-                    <div className="flex items-center space-x-3">
-                      <FileText className="h-5 w-5 text-indigo-500" />
-                      <div>
-                        <span className="font-bold text-slate-950 hover:underline cursor-pointer">{doc.filename}</span>
-                        <p className="text-slate-500 mt-0.5">ID: {doc.id} | Category: <b>{doc.type}</b></p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-slate-400 font-medium">Uploaded: {doc.uploaded_at}</span>
-                  </div>
-                ))}
-              </div>
+            <div className="bg-white border border-slate-200 rounded shadow-sm p-6 text-center text-slate-500 py-12">
+              <FileText className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+              <p>Document storage module not configured for this prototype instance.</p>
             </div>
           )}
 

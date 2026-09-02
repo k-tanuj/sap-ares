@@ -84,6 +84,13 @@ class FacilityBase(BaseModel):
 class FacilityCreate(FacilityBase):
     organization_id: str
 
+class FacilityUpdate(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    type: Optional[str] = None
+    capacity_utilization: Optional[float] = None
+    emergency_capacity: Optional[float] = None
+
 class FacilityResponse(FacilityBase):
     organization_id: str
 
@@ -118,6 +125,11 @@ class InventoryBase(BaseModel):
 class InventoryCreate(InventoryBase):
     organization_id: str
 
+class InventoryUpdate(BaseModel):
+    quantity: Optional[int] = None
+    safety_stock: Optional[int] = None
+    allocation_limit: Optional[int] = None
+
 class InventoryResponse(InventoryBase):
     id: int
     organization_id: str
@@ -138,6 +150,12 @@ class SupplierConditionBase(BaseModel):
 class SupplierConditionCreate(SupplierConditionBase):
     supplier_org_id: str
 
+class SupplierConditionUpdate(BaseModel):
+    base_price: Optional[float] = None
+    lead_time_days: Optional[int] = None
+    moq: Optional[int] = None
+    capacity_per_week: Optional[int] = None
+
 class SupplierConditionResponse(SupplierConditionBase):
     id: int
     supplier_org_id: str
@@ -149,6 +167,7 @@ class SupplierConditionResponse(SupplierConditionBase):
 # Route
 class RouteBase(BaseModel):
     id: str
+    supplier_org_id: Optional[str] = None
     origin: str
     destination: str
     mode: str # OCEAN, AIR, ROAD, RAIL
@@ -290,16 +309,79 @@ class SimulationResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# Notifications
+class SupplierNotificationBase(BaseModel):
+    title: str
+    message: str
+    scenario_id: Optional[int] = None
+    is_read: bool = False
+
+class SupplierNotificationCreate(SupplierNotificationBase):
+    supplier_org_id: str
+
+class SupplierNotificationResponse(SupplierNotificationBase):
+    id: int
+    supplier_org_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # Audit Log
 class AuditLogResponse(BaseModel):
     id: int
+    sequence_number: Optional[int] = None
     user_id: Optional[int] = None
     email: Optional[str] = None
     action: str
     entity_type: Optional[str] = None
     entity_id: Optional[str] = None
     description: Optional[str] = None
+    prev_hash: Optional[str] = None
+    entry_hash: Optional[str] = None
     timestamp: datetime
 
     class Config:
         from_attributes = True
+
+# Collaborative Supplier Negotiations & E-Signature
+class ScenarioNegotiationBase(BaseModel):
+    scenario_id: int
+    supplier_org_id: str
+    product_id: str
+    requested_quantity: int
+    proposed_quantity: Optional[int] = None
+    proposed_unit_price: Optional[float] = None
+    proposed_lead_time_days: Optional[int] = None
+    status: str = "PENDING_SUPPLIER_RESPONSE"
+    response_deadline: datetime
+    supplier_comments: Optional[str] = None
+
+class ScenarioNegotiationCreate(ScenarioNegotiationBase):
+    pass
+
+class ScenarioNegotiationCounter(BaseModel):
+    proposed_quantity: int
+    proposed_unit_price: Optional[float] = None
+    proposed_lead_time_days: Optional[int] = None
+    supplier_comments: Optional[str] = None
+
+class ScenarioNegotiationAccept(BaseModel):
+    e_signature_name: str
+    e_signature_title: Optional[str] = "Authorized Representative"
+    supplier_comments: Optional[str] = None
+
+class ScenarioNegotiationDecline(BaseModel):
+    reason: str
+
+class ScenarioNegotiationResponse(ScenarioNegotiationBase):
+    id: int
+    e_signature_name: Optional[str] = None
+    e_signature_hash: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+

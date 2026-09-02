@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import datetime
 
 from .. import crud, schemas, auth, models
 from ..database import get_db
@@ -112,6 +113,159 @@ def generate_scenarios(
         
     return saved_scenarios
 
+
+# ─── ASYNCHRONOUS SCENARIO GENERATION & STREAMING (ENTERPRISE SCALING) ──────
+
+@router.post("/generate-async")
+def generate_scenarios_async(
+    event_id: int,
+    product_id: str,
+    demand_qty: int,
+    current_user: models.User = Depends(auth.require_buyer),
+    db: Session = Depends(get_db)
+):
+    """
+    Asynchronously triggers recovery plan generation in a background worker thread.
+    Returns task_id for progress polling or SSE event streaming.
+    """
+    from ..services.async_task_manager import create_task, run_in_background, update_task_progress
+    from ..database import SessionLocal
+
+    task_id = create_task("SCENARIO_GENERATION", {
+        "event_id": event_id,
+        "product_id": product_id,
+        "demand_qty": demand_qty,
+        "buyer_id": current_user.id
+    })
+
+    def _async_worker(task_id: str):
+        worker_db = SessionLocal()
+        try:
+            update_task_progress(task_id, 20, "Collecting SCM Context & Tariffs")
+            
+            # Auto-supersede old pending candidate scenarios
+            worker_db.query(models.Scenario).filter(
+                models.Scenario.tariff_event_id == event_id,
+                models.Scenario.status == "PENDING_REVIEW"
+            ).update({"status": "SUPERSEDED"}, synchronize_session=False)
+            worker_db.commit()
+
+            update_task_progress(task_id, 45, "Running Multi-Agent Intelligence & Feasibility Pruners")
+            
+            result = run_recovery_scenario_generation(
+                db=worker_db,
+                event_id=event_id,
+                product_id=product_id,
+                demand_qty=demand_qty,
+                user_org_id=current_user.organization_id
+            )
+
+            update_task_progress(task_id, 80, "Executing OR-Tools MIP Optimization & KPI Persistence")
+            
+            if result.get("status") == "ERROR":
+                raise ValueError(f"Generation error: {result.get('error_code')}")
+
+            saved_scenarios = []
+            for sc_data in result.get("scenarios", []):
+                actions_list = [
+                    schemas.ScenarioAction(
+                        action_type=act.get("action_type"),
+                        supplier_org_id=act.get("supplier_org_id"),
+                        product_id=act.get("product_id"),
+                        quantity=act.get("quantity"),
+                        route_id=act.get("route_id"),
+                        facility_id=act.get("facility_id")
+                    )
+                    for act in sc_data.get("actions", [])
+                ]
+                
+                scen_create = schemas.ScenarioCreate(
+                    tariff_event_id=event_id,
+                    name=sc_data.get("name"),
+                    objective=sc_data.get("objective"),
+                    action_details=actions_list
+                )
+                db_scen = crud.create_scenario(worker_db, scen_create, created_by=current_user.id)
+                crud.update_scenario_metrics(
+                    worker_db,
+                    scenario_id=db_scen.id,
+                    feasibility=sc_data.get("feasibility", "FEASIBLE"),
+                    feasibility_notes=sc_data.get("feasibility_notes", ""),
+                    cost=sc_data.get("cost", 0.0),
+                    time_days=sc_data.get("time_days", 0),
+                    risk=sc_data.get("risk", 0.0),
+                    continuity=sc_data.get("continuity", 100.0)
+                )
+                worker_db.refresh(db_scen)
+                saved_scenarios.append({
+                    "id": db_scen.id,
+                    "name": db_scen.name,
+                    "objective": db_scen.objective,
+                    "feasibility": db_scen.feasibility,
+                    "optimized_cost": db_scen.optimized_cost,
+                    "recovery_time_days": db_scen.recovery_time_days,
+                    "risk_score": db_scen.risk_score,
+                    "continuity_percentage": db_scen.continuity_percentage
+                })
+            
+            return saved_scenarios
+        finally:
+            worker_db.close()
+
+    run_in_background(task_id, _async_worker)
+    return {"task_id": task_id, "status": "PENDING", "message": "Scenario generation started in background."}
+
+
+@router.get("/tasks/{task_id}")
+def get_scenario_task_status(
+    task_id: str,
+    current_user: models.User = Depends(auth.require_buyer)
+):
+    """
+    Returns current status, stage, progress (0-100), and result of an async generation task.
+    """
+    from ..services.async_task_manager import get_task
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@router.get("/tasks/{task_id}/stream")
+async def stream_scenario_task_events(
+    task_id: str,
+    current_user: models.User = Depends(auth.require_buyer)
+):
+    """
+    Server-Sent Events (SSE) stream for real-time progress streaming to frontend UI.
+    """
+    import json
+    from fastapi.responses import StreamingResponse
+    from ..services.async_task_manager import get_task
+
+    async def event_generator():
+        while True:
+            task = get_task(task_id)
+            if not task:
+                yield f"data: {json.dumps({'error': 'Task not found'})}\n\n"
+                break
+            
+            payload = {
+                "task_id": task["task_id"],
+                "status": task["status"],
+                "progress": task["progress"],
+                "stage": task["stage"],
+                "error": task.get("error")
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+
+            if task["status"] in ["COMPLETED", "FAILED"]:
+                break
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @router.put("/{scenario_id}/approve", response_model=schemas.ScenarioResponse)
 def approve_scenario(
     scenario_id: int,
@@ -160,35 +314,67 @@ def approve_scenario(
             after_kpi=sim_data["after_kpi"]
         )
         
-        # 3. SAP Sync (Mocked PO creation / route override)
+        # 3. Transactional SAP ERP Execution (Live Purchase Order creation + Change Record)
         sap = get_sap_adapter()
-        sap_payload = []
-        for act in updated_scen.action_details:
-            sap_payload.append({
-                "ScenarioId": scenario_id,
-                "ActionType": act.get("action_type"),
-                "Product": act.get("product_id"),
-                "Supplier": act.get("supplier_org_id"),
-                "Quantity": act.get("quantity"),
-                "Route": act.get("route_id")
-            })
+        erp_res = sap.execute_scenario_erp_writeback(scenario_id, updated_scen.action_details)
         
-        sap.sync_to_sap_analytics("ScenarioApprovals", sap_payload)
+        crud.log_action(
+            db,
+            action="SAP_ERP_TRANSACTIONAL_WRITEBACK",
+            entity_type="Scenario",
+            entity_id=scenario_id,
+            description=f"Executed transactional ERP write-back. Status: {erp_res.get('status')}. POs: {erp_res.get('purchase_orders')}. Change Record: {erp_res.get('change_request')}",
+            user_id=current_user.id,
+            email=current_user.email
+        )
         
-        # Create SAP purchase orders if reallocated
+        # Create supplier notifications & collaborative negotiation proposals
+        notified_suppliers = set()
         for act in updated_scen.action_details:
-            if act.get("action_type") in ["INCREASE_ALLOCATION", "SWITCH_SUPPLIER"]:
-                crud.log_action(
+            supplier_id = act.get("supplier_org_id")
+            if supplier_id and supplier_id not in notified_suppliers:
+                notified_suppliers.add(supplier_id)
+                crud.create_supplier_notification(
                     db,
-                    action="SAP_PURCHASE_ORDER_TRIGGERED",
-                    entity_type="Scenario",
-                    entity_id=scenario_id,
-                    description=f"Triggered SAP PO for product {act.get('product_id')} to vendor {act.get('supplier_org_id')} for quantity {act.get('quantity')}.",
-                    user_id=current_user.id,
-                    email=current_user.email
+                    schemas.SupplierNotificationCreate(
+                        supplier_org_id=supplier_id,
+                        title="Recovery Plan Approved & Allocation Proposal Issued",
+                        message=f"Buyer approved recovery plan for '{updated_scen.tariff_event.title}'. Negotiation proposal for {act.get('quantity', 0)} units issued (48h response window).",
+                        scenario_id=scenario_id
+                    )
+                )
+
+                # Initialize collaborative negotiation proposal with 48h timeout
+                deadline = datetime.datetime.utcnow() + datetime.timedelta(hours=48)
+                crud.create_scenario_negotiation(
+                    db,
+                    schemas.ScenarioNegotiationCreate(
+                        scenario_id=scenario_id,
+                        supplier_org_id=supplier_id,
+                        product_id=act.get("product_id", "MAT-001"),
+                        requested_quantity=act.get("quantity", 100),
+                        status="PENDING_SUPPLIER_RESPONSE",
+                        response_deadline=deadline,
+                        supplier_comments="Initial allocation proposal issued by buyer."
+                    )
                 )
 
     return updated_scen
+
+
+@router.get("/{scenario_id}/negotiations", response_model=List[schemas.ScenarioNegotiationResponse])
+def get_scenario_negotiations(
+    scenario_id: int,
+    current_user: models.User = Depends(auth.require_buyer),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns all collaborative supplier negotiation threads, counter-proposals, and E-Signatures for a scenario.
+    """
+    # Auto-expire overdue negotiations
+    crud.expire_overdue_negotiations(db)
+    return crud.get_scenario_negotiations(db, scenario_id=scenario_id)
+
 
 
 @router.post("/clear-pending")

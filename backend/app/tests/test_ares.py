@@ -1,12 +1,20 @@
+import sys
+from pathlib import Path
+
+# Add backend directory to sys.path
+backend_dir = Path(__file__).resolve().parent.parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.main import app, seed_database
-from backend.app.database import Base, get_db
-from backend.app.services.ai_agent import validate_scenario_feasibility
-from backend.app import models
+from app.main import app, seed_database
+from app.database import Base, get_db
+from app.services.ai_agent import validate_scenario_feasibility
+from app import models
 
 from sqlalchemy.pool import StaticPool
 

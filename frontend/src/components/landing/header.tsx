@@ -16,11 +16,13 @@ export function Header() {
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-8">
         <div 
           onClick={() => scrollToSection('home')}
-          className="flex items-center gap-2 cursor-pointer group"
+          className="flex items-center gap-2.5 cursor-pointer group"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 font-bold group-hover:bg-indigo-100 transition-colors">
-            <Shield className="h-5 w-5" />
-          </div>
+          <img 
+            src="/ares-logo.svg" 
+            alt="ARES Logo" 
+            className="h-9 w-9 object-contain group-hover:scale-105 transition-transform" 
+          />
           <span className="text-xl font-bold tracking-tight text-gray-900">ARES</span>
         </div>
         

@@ -1,0 +1,62 @@
+---
+# SAP BTP Cloud Foundry Deployment Manifest
+# Deploy with: cf push
+# Region: us10-001 | Org: <your-org> | Space: <your-space>
+
+applications:
+
+  # ─── BACKEND: FastAPI + SAP HANA Cloud ───────────────────────────────────
+  - name: ares-backend
+    path: backend
+    buildpacks:
+      - python_buildpack
+    command: python startup.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    memory: 512M
+    disk_quota: 1G
+    instances: 1
+    health-check-type: http
+    health-check-http-endpoint: /health
+
+    services:
+      - ares        # SAP HANA Cloud Free Tier / Production instance binding
+
+    env:
+      # Auth
+      JWT_SECRET: "replace-with-a-secure-random-jwt-secret-key"
+
+      # Google Gemini Generative AI Engine
+      GEMINI_API_KEY: "<YOUR_GEMINI_API_KEY>"
+
+      # SAP BTP / Business Accelerator Hub / CPI / SAC
+      SAP_API_KEY: "<YOUR_SAP_API_KEY>"
+      SAP_HUB_BASE_URL: "https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap"
+      SAP_INTEGRATION_URL: "https://<your-cpi-tenant>.it-cpi012-rt.cfapps.eu10.hana.ondemand.com/http/ares/v1/trade-events"
+      SAP_ANALYTICS_URL: "https://<your-sac-tenant>.eu10.hcs.cloud.sap/api/v1/data"
+      USE_MOCK_SAP: "false"
+
+      # Trade Intelligence (USITC DataWeb API)
+      USITC_API_BASE_URL: "https://datawebws.usitc.gov/dataweb"
+      USITC_API_KEY: "<YOUR_USITC_API_KEY>"
+
+      # DB Connection Pool Configuration
+      DB_POOL_SIZE: "10"
+      DB_MAX_OVERFLOW: "5"
+      DB_POOL_TIMEOUT: "30"
+      DB_POOL_RECYCLE: "1800"
+
+  # ─── FRONTEND: Next.js ────────────────────────────────────────────────────
+  - name: ares-frontend
+    path: frontend
+    buildpacks:
+      - nodejs_buildpack
+    command: npm start
+    memory: 1024M
+    disk_quota: 2G
+    instances: 1
+    health-check-type: http
+    health-check-http-endpoint: /
+    timeout: 180
+
+    env:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: "https://ares-backend.<your-region>.hana.ondemand.com"

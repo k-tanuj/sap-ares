@@ -41,6 +41,11 @@ def optimize_supplier_allocation(
         logger.error("OR-Tools solver backend SCIP could not be created")
         return {"status": "NO_SOLUTION", "allocations": [], "message": "Solver backend error"}
 
+    # Set Solver Execution Limits for Enterprise Scale
+    solver.set_time_limit(15000)  # 15 seconds max execution timeout to protect server threads
+    if hasattr(solver, "SetNumThreads"):
+        solver.SetNumThreads(4)
+
     # Variables
     # x[i]: quantity allocated to supplier i (continuous variable >= 0)
     # y[i]: binary variable (1 if supplier i is used, 0 otherwise)
@@ -123,3 +128,4 @@ def optimize_supplier_allocation(
             "allocations": [],
             "message": "No feasible allocation satisfies constraints (capacity or MOQ mismatch)."
         }
+

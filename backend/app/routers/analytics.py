@@ -152,3 +152,31 @@ def get_analytics_dashboard(
             "countries_exposed": len(country_counts)
         }
     }
+
+
+@router.get("/db-pool-status")
+def get_database_pool_status_endpoint(
+    current_user: models.User = Depends(auth.require_buyer)
+):
+    """
+    Returns real-time database connection pooling health, dialect, and concurrency statistics.
+    """
+    from ..database import get_db_pool_status
+    return {
+        "status": "HEALTHY",
+        "pool": get_db_pool_status()
+    }
+
+
+@router.get("/audit-logs/verify-integrity")
+def verify_audit_log_integrity(
+    current_user: models.User = Depends(auth.require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Cryptographically verifies the unbroken SHA-256 hash chain across all audit records.
+    Detects any row modification, tampering, or deletion for SOC 2 and ISO 27001 compliance.
+    """
+    return crud.verify_audit_log_chain(db)
+
+

@@ -281,12 +281,51 @@ def scenario_generation_node(state: AgentState) -> AgentState:
             state["generated_scenarios"] = parsed["scenarios"]
             return state
     except Exception as e:
-        err_str = str(e)
-        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-            state["error"] = "LLM_QUOTA_EXCEEDED: Gemini API daily quota reached. Please update the GEMINI_API_KEY in backend/.env with a key that has available quota."
+        logger.warning(f"Gemini Scenario generation error/quota limit: {e}. Activating Dynamic Expert Resilience Engine.")
+        
+        # ─── Dynamic Multi-Tier Expert Engine Fallback ───
+        from .expert_engine import ExpertResilienceEngine
+        db = context_data.get("_db_session")
+        event = db.query(models.TariffEvent).filter(models.TariffEvent.id == state["event_id"]).first() if db else None
+        product = db.query(models.Product).filter(models.Product.id == state["target_product_id"]).first() if db else None
+        
+        if db and event and product:
+            expert_scenarios = ExpertResilienceEngine.generate_resilience_plans(
+                db=db,
+                event=event,
+                product=product,
+                demand_qty=state["demand_qty"],
+                affected_supplier_ids=context_data.get("affected_supplier_ids", [])
+            )
+            if expert_scenarios:
+                state["generated_scenarios"] = expert_scenarios
+                if "error" in state:
+                    del state["error"]
+                return state
+
+        # Fallback to proportional multi-vendor split if expert engine encounters empty context
+        suppliers = context_data.get("suppliers", [])
+        if not suppliers:
+            state["error"] = "INSUFFICIENT_DATA: No available active suppliers to generate fallback scenario."
             return state
-        logger.warning(f"Gemini Scenario generation error: {e}")
-        state["error"] = f"LLM_ERROR: {str(e)}"
+            
+        fallback_actions = []
+        for s in suppliers:
+            fallback_actions.append({
+                "action_type": "INCREASE_ALLOCATION",
+                "supplier_org_id": s["supplier_org_id"],
+                "product_id": state["target_product_id"],
+                "quantity": state["demand_qty"] // len(suppliers),
+                "cost_impact": float(s.get("unit_cost", 0) * (state["demand_qty"] // len(suppliers)))
+            })
+            
+        state["generated_scenarios"] = [{
+            "name": f"Proportional Multi-Source Plan for {product.name if product else state['target_product_id']}",
+            "objective": "BALANCED",
+            "actions": fallback_actions
+        }]
+        if "error" in state:
+            del state["error"]
 
     return state
 

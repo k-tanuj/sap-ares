@@ -38,10 +38,11 @@ export default function LoginPage() {
       formData.append("username", loginEmail);
       formData.append("password", loginPassword);
 
-      const res = await fetch("http://localhost:8000/api/auth/login", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formData,
+        credentials: "include", // Enable sending/receiving secure HttpOnly cookies
       });
 
       if (!res.ok) {
@@ -49,12 +50,11 @@ export default function LoginPage() {
         throw new Error(data.detail || "Authentication failed");
       }
 
-      const { access_token } = await res.json();
-      localStorage.setItem("ares_token", access_token);
+      // The backend sets ares_access_token as an HttpOnly cookie automatically.
+      // We still need to call /api/auth/me to get the user's role and organization ID.
 
-      // Fetch user profile info
-      const meRes = await fetch("http://localhost:8000/api/auth/me", {
-        headers: { Authorization: `Bearer ${access_token}` },
+      const meRes = await fetch("/api/auth/me", {
+        credentials: "include", // Send the HttpOnly cookie
       });
 
       if (!meRes.ok) throw new Error("Failed to load user session");
@@ -85,7 +85,7 @@ export default function LoginPage() {
 
     try {
       // Register Supplier (status starts as REGISTERED)
-      const res = await fetch(`http://localhost:8000/api/auth/register-supplier?org_name=${encodeURIComponent(regOrgName)}`, {
+      const res = await fetch(`/api/auth/register-supplier?org_name=${encodeURIComponent(regOrgName)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -133,9 +133,11 @@ export default function LoginPage() {
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500"></div>
 
           <div className="text-center mb-10">
-            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100 mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            </div>
+            <img 
+              src="/ares-logo.svg" 
+              alt="ARES Logo" 
+              className="inline-flex h-16 w-16 object-contain mb-3 drop-shadow-md" 
+            />
             <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">ARES</h1>
             <p className="text-sm text-slate-500 font-medium tracking-wide uppercase mt-2">Control Plane Access</p>
           </div>

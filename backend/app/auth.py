@@ -10,8 +10,9 @@ from .config import settings
 from .database import get_db
 from .models import User, Organization
 from .schemas import TokenData
+from .tenant import set_current_tenant
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
@@ -37,17 +38,28 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+from fastapi import Request
+
+def get_current_user(
+    request: Request,
+    bearer_token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # Priority 1: Check HttpOnly Secure Cookie ('ares_access_token')
+    # Priority 2: Check Authorization: Bearer header
+    token = request.cookies.get("ares_access_token") or bearer_token
+    if not token:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
         token_data = TokenData(email=email)
     except jwt.PyJWTError:
         raise credentials_exception
@@ -58,6 +70,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is deactivated")
         
+    # Bind tenant scope for the active request execution
+    set_current_tenant(user.organization_id, user.role)
     return user
 
 def require_role(allowed_roles: list[str]):
