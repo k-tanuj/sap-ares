@@ -246,7 +246,9 @@ export default function BuyerDashboard() {
         if (data.progress !== undefined) {
           setGenProgress(data.progress);
         }
-        if (data.message) {
+        if (data.stage) {
+          setGenLogs(prev => [...prev, data.stage]);
+        } else if (data.message) {
           setGenLogs(prev => [...prev, data.message]);
         }
         
@@ -254,9 +256,9 @@ export default function BuyerDashboard() {
           setSuccess("AI scenarios generated successfully. Feasibility pruners & OR-Tools MIP optimizer completed.");
           loadAllData("");
           eventSource.close();
-          setTimeout(() => setGenTaskId(null), 4000); // hide after 4 seconds
-        } else if (data.status === "ERROR") {
-          setError(data.result?.error || "AI generation failed");
+          setTimeout(() => setGenTaskId(null), 3000);
+        } else if (data.status === "ERROR" || data.status === "FAILED") {
+          setError(data.error || data.result?.error || "AI scenario generation failed.");
           eventSource.close();
           setGenTaskId(null);
         }
@@ -274,7 +276,7 @@ export default function BuyerDashboard() {
     return () => {
       eventSource.close();
     };
-  }, [genTaskId, token]);
+  }, [genTaskId]);
 
 
   const handleLoadNegotiations = async (scenId: number) => {
@@ -473,7 +475,7 @@ export default function BuyerDashboard() {
           <div className="flex items-center space-x-4">
             <Button 
               variant="outline" size="icon"
-              onClick={() => token && loadAllData(token)}
+              onClick={() => loadAllData("")}
               disabled={loading}
               className="text-slate-500 border-slate-200 hover:bg-slate-50 bg-white"
               title="Refresh Dashboard & Sync SAP"
@@ -628,7 +630,6 @@ export default function BuyerDashboard() {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!token) return;
                       setError(""); setSuccess("");
                       try {
                         const res = await fetch("/api/trade/ingest", {
@@ -638,7 +639,7 @@ export default function BuyerDashboard() {
                         if (!res.ok) throw new Error("Trade ingestion failed");
                         const data = await res.json();
                         setSuccess(`Ingested ${data.length} new trade event(s) from India intelligence sources.`);
-                        loadAllData(token);
+                        loadAllData("");
                       } catch (err: any) { setError(err.message); }
                     }}
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 rounded transition-colors text-sm"

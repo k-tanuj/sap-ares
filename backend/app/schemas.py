@@ -1,6 +1,12 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 from datetime import datetime
+
+try:
+    import email_validator  # noqa: F401
+    from pydantic import EmailStr
+except (ImportError, Exception):
+    EmailStr = str
 
 # Organization
 class OrganizationBase(BaseModel):
@@ -21,7 +27,7 @@ class OrganizationResponse(OrganizationBase):
 
 # User
 class UserBase(BaseModel):
-    email: EmailStr
+    email: str
     role: str # BUYER_ADMIN, BUYER_USER, SUPPLIER_ADMIN, SUPPLIER_USER
     organization_id: str
 
@@ -29,7 +35,7 @@ class UserCreate(UserBase):
     password: str
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 class UserResponse(UserBase):

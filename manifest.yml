@@ -22,21 +22,21 @@ applications:
 
     env:
       # Auth
-      JWT_SECRET: "replace-with-a-secure-random-jwt-secret-key"
+      JWT_SECRET: "supersecretkey123"
 
       # Google Gemini Generative AI Engine
-      GEMINI_API_KEY: "<YOUR_GEMINI_API_KEY>"
+      GEMINI_API_KEY: "<your-gemini-api-key>"
 
       # SAP BTP / Business Accelerator Hub / CPI / SAC
-      SAP_API_KEY: "<YOUR_SAP_API_KEY>"
+      SAP_API_KEY: "<your-sap-api-key>"
       SAP_HUB_BASE_URL: "https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap"
-      SAP_INTEGRATION_URL: "https://<your-cpi-tenant>.it-cpi012-rt.cfapps.eu10.hana.ondemand.com/http/ares/v1/trade-events"
-      SAP_ANALYTICS_URL: "https://<your-sac-tenant>.eu10.hcs.cloud.sap/api/v1/data"
+      SAP_INTEGRATION_URL: "https://cpi-tenant.it-cpi012-rt.cfapps.eu10.hana.ondemand.com/http/ares/v1/trade-events"
+      SAP_ANALYTICS_URL: "https://sac-tenant.eu10.hcs.cloud.sap/api/v1/data"
       USE_MOCK_SAP: "false"
 
       # Trade Intelligence (USITC DataWeb API)
       USITC_API_BASE_URL: "https://datawebws.usitc.gov/dataweb"
-      USITC_API_KEY: "<YOUR_USITC_API_KEY>"
+      USITC_API_KEY: "<your-usitc-api-key>"
 
       # DB Connection Pool Configuration
       DB_POOL_SIZE: "10"
@@ -59,4 +59,4 @@ applications:
 
     env:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: "https://ares-backend.<your-region>.hana.ondemand.com"
+      NEXT_PUBLIC_API_URL: "https://ares-backend.cfapps.us10-001.hana.ondemand.com"

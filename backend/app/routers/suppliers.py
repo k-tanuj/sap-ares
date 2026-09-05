@@ -230,8 +230,36 @@ def create_supplier_inventory(
     Add inventory stock item.
     """
     auth.get_supplier_org(current_user, db)
+    
+    # Clean and validate product_id
+    prod_id = payload.product_id.strip() if payload.product_id else ""
+    prod = db.query(models.Product).filter(models.Product.id == prod_id).first()
+    if not prod:
+        valid_prods = [p.id for p in db.query(models.Product.id).all()]
+        prods_list_str = ", ".join(valid_prods) if valid_prods else "MAT-001, MAT-002, MAT-003"
+        raise HTTPException(
+            status_code=400,
+            detail=f"Component ID '{payload.product_id}' does not exist. Valid options: {prods_list_str}"
+        )
+
+    # Clean and validate facility_id
+    fac_id = payload.facility_id.strip() if payload.facility_id else None
+    if fac_id:
+        fac = db.query(models.Facility).filter(models.Facility.id == fac_id).first()
+        if not fac:
+            supp_facs = db.query(models.Facility.id).filter(models.Facility.organization_id == current_user.organization_id).all()
+            fac_str = ", ".join([f.id for f in supp_facs]) if supp_facs else "None registered"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Facility '{fac_id}' not found. Your facilities: {fac_str}. Leave blank if unassigned."
+            )
+
     inv_schema = schemas.InventoryCreate(
-        **payload.model_dump(),
+        product_id=prod_id,
+        facility_id=fac_id,
+        quantity=payload.quantity,
+        safety_stock=payload.safety_stock,
+        allocation_limit=payload.allocation_limit,
         organization_id=current_user.organization_id
     )
     return crud.create_inventory(db, inv_schema)
@@ -317,10 +345,17 @@ def create_supplier_route(
     """
     Create a new route for the supplier organization.
     """
-    route_schema = schemas.RouteCreate(
-        **payload.model_dump(),
-        supplier_org_id=org.id
-    )
+    existing = db.query(models.Route).filter(models.Route.id == payload.id.strip()).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Route ID '{payload.id}' already exists. Please provide a unique Route ID (e.g. RT-{payload.id})."
+        )
+
+    route_data = payload.model_dump()
+    route_data["id"] = payload.id.strip()
+    route_data["supplier_org_id"] = org.id
+    route_schema = schemas.RouteCreate(**route_data)
     return crud.create_route(db, route_schema)
 
 

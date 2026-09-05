@@ -108,18 +108,19 @@ export default function SupplierPortal() {
     loadSupplierData("", savedOrg!);
   }, []);
 
-  const loadSupplierData = async (jwt: string, supplierOrgId: string) => {
+  const loadSupplierData = async (_jwt: string = "", supplierOrgId: string = "") => {
     setLoading(true);
     setError("");
     try {
-      const headers = { Authorization: `Bearer ${jwt}` };
-      
       // 1. Fetch organization status
+      let currentStatus = onboardingStatus;
       const orgRes = await fetch("/api/suppliers/me", { credentials: 'include' });
       if (orgRes.ok) {
         const myOrg = await orgRes.json();
+        currentStatus = myOrg.onboarding_status;
         setOnboardingStatus(myOrg.onboarding_status);
         setOrgName(myOrg.name);
+        if (myOrg.id && !orgId) setOrgId(myOrg.id);
       }
 
       // 2. Fetch Supplier Profile (accessible in any onboarding status)
@@ -140,8 +141,7 @@ export default function SupplierPortal() {
       }
 
       // 3. Fetch Operational Data (will return 403 in backend if not APPROVED/ACTIVE)
-      // We check locally to avoid console errors
-      const isApproved = onboardingStatus === "APPROVED" || onboardingStatus === "ACTIVE";
+      const isApproved = currentStatus === "APPROVED" || currentStatus === "ACTIVE";
       
       // Fetch Confirmations / Disruption requests
       const confRes = await fetch("/api/tariffs/confirmations/all", { credentials: 'include' });
@@ -199,21 +199,20 @@ export default function SupplierPortal() {
   // Submit Profile update
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch("/api/suppliers/profile", {
         method: "PUT",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(profileForm)
       });
       if (!res.ok) throw new Error("Failed to save profile changes");
       setSuccess("Company profile details updated successfully. Reviewer notified.");
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
@@ -222,19 +221,21 @@ export default function SupplierPortal() {
   // Submit Facility
   const handleAddFacility = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch("/api/suppliers/facilities", {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(facilityForm)
       });
-      if (!res.ok) throw new Error("Failed to create facility record");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to create facility record");
+      }
       setSuccess("Operational facility successfully added to inventory map.");
       setFacilityForm({
         id: "",
@@ -244,14 +245,13 @@ export default function SupplierPortal() {
         capacity_utilization: 60.0,
         emergency_capacity: 1000.0
       });
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleDeleteFacility = async (facId: string) => {
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
@@ -259,31 +259,36 @@ export default function SupplierPortal() {
         method: "DELETE",
         credentials: "include"
       });
-      if (!res.ok) throw new Error("Failed to delete facility");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to delete facility");
+      }
       setSuccess("Facility removed.");
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleUpdateFacility = async (facId: string, updatedData: any) => {
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch(`/api/suppliers/facilities/${facId}`, {
         method: "PUT",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(updatedData)
       });
-      if (!res.ok) throw new Error("Failed to update facility");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to update facility");
+      }
       setSuccess("Facility updated.");
       setEditingFacility(null);
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
@@ -292,35 +297,36 @@ export default function SupplierPortal() {
   // Submit Sourcing Condition
   const handleAddCondition = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch("/api/suppliers/conditions", {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(conditionForm)
       });
-      if (!res.ok) throw new Error("Failed to submit catalog condition");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to submit catalog condition");
+      }
       setSuccess("Catalog product specification updated.");
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleUpdateCondition = async (condId: number, updatedData: any) => {
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch(`/api/suppliers/conditions/${condId}`, {
         method: "PUT",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(updatedData)
@@ -328,7 +334,7 @@ export default function SupplierPortal() {
       if (!res.ok) throw new Error("Failed to update condition");
       setSuccess("Condition updated.");
       setEditingCondition(null);
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
@@ -337,35 +343,37 @@ export default function SupplierPortal() {
   // Submit Inventory Stock
   const handleAddInventory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch("/api/suppliers/inventory", {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(inventoryForm)
       });
-      if (!res.ok) throw new Error("Failed to post stock levels");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to post stock levels");
+      }
       setSuccess("Stock quantity record loaded.");
-      loadSupplierData(token, orgId);
+      setInventoryForm({ product_id: "", facility_id: "", quantity: 0, safety_stock: 0, allocation_limit: 0 });
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleUpdateInventory = async (invId: number, updatedData: any) => {
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch(`/api/suppliers/inventory/${invId}`, {
         method: "PUT",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(updatedData)
@@ -373,7 +381,7 @@ export default function SupplierPortal() {
       if (!res.ok) throw new Error("Failed to update inventory");
       setSuccess("Inventory updated.");
       setEditingInventory(null);
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
@@ -381,24 +389,26 @@ export default function SupplierPortal() {
 
   const handleAddRoute = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch("/api/suppliers/routes", {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(routeForm)
       });
-      if (!res.ok) throw new Error("Failed to post route");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to post route");
+      }
       setSuccess("Route recorded.");
       setRouteForm({
         id: "", origin: "", destination: "", mode: "OCEAN", lead_time_days: 0, cost_per_unit: 0, capacity_limit: 0
       });
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
@@ -406,14 +416,13 @@ export default function SupplierPortal() {
 
   // Submit Disruption Exposure Confirmation
   const handleConfirmDisruption = async (confId: number, statusStr: "CONFIRMED_AFFECTED" | "NOT_AFFECTED", notes: string) => {
-    if (!token || !orgId) return;
     setError("");
     setSuccess("");
     try {
       const res = await fetch(`/api/tariffs/confirmations/${confId}`, {
         method: "PUT",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -423,14 +432,13 @@ export default function SupplierPortal() {
       });
       if (!res.ok) throw new Error("Failed to update exposure status");
       setSuccess("Exposure status submitted to buyer control node.");
-      loadSupplierData(token, orgId);
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleReadNotification = async (notifId: number) => {
-    if (!token) return;
     try {
       const res = await fetch(`/api/suppliers/notifications/${notifId}/read`, {
         method: "PUT",
@@ -453,14 +461,13 @@ export default function SupplierPortal() {
   };
 
   const handleNegotiationAction = async (negId: number, action: 'accept' | 'counter' | 'decline', counterData?: any) => {
-    const currentToken = token || (typeof window !== "undefined" ? localStorage.getItem("ares_token") || "" : "");
     setError("");
     setSuccess("");
     try {
       let body: any = {};
       if (action === 'accept') {
         body = {
-          signature_text: `ESIGN-${orgId}-${Date.now()}`,
+          signature_text: `ESIGN-${orgId || 'SUPPLIER'}-${Date.now()}`,
           signer_name: "Authorized Supplier Representative",
           signer_title: "Operations Director"
         };
@@ -479,16 +486,15 @@ export default function SupplierPortal() {
 
       const res = await fetch(`/api/suppliers/negotiations/${negId}/${action}`, {
         method: "POST",
+        credentials: "include",
         headers: {
-          Authorization: `Bearer ${currentToken}`,
           "Content-Type": "application/json"
         },
-        credentials: "include",
         body: JSON.stringify(body)
       });
       if (!res.ok) throw new Error(`Failed to ${action} negotiation proposal`);
       setSuccess(`Negotiation proposal successfully ${action}ed.`);
-      loadSupplierData(currentToken, orgId || "");
+      loadSupplierData("", orgId || "");
     } catch (err: any) {
       setError(err.message);
     }
@@ -577,7 +583,7 @@ export default function SupplierPortal() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <button onClick={() => token && orgId && loadSupplierData(token, orgId)}
+            <button onClick={() => loadSupplierData("", orgId || "")}
               disabled={loading}
               className="p-2 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition-colors shadow-sm"
             >
@@ -1329,23 +1335,59 @@ export default function SupplierPortal() {
                 <h3 className="text-base font-bold uppercase tracking-wider text-slate-500 mb-4">Report Physical Stock</h3>
                 <form onSubmit={handleAddInventory} className="space-y-4 text-sm">
                   <div>
-                    <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Component ID</label>
-                    <input 
-                      type="text" required
-                      value={inventoryForm.product_id}
-                      onChange={(e) => setInventoryForm({...inventoryForm, product_id: e.target.value})}
-                      className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
-                    />
+                    <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Component / Material</label>
+                    {products && products.length > 0 ? (
+                      <select 
+                        required
+                        value={inventoryForm.product_id}
+                        onChange={(e) => setInventoryForm({...inventoryForm, product_id: e.target.value})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white font-medium"
+                      >
+                        <option value="">Select a Component...</option>
+                        {products.map((p: any) => (
+                          <option key={p.id} value={p.id}>
+                            {p.id} — {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select 
+                        required
+                        value={inventoryForm.product_id}
+                        onChange={(e) => setInventoryForm({...inventoryForm, product_id: e.target.value})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white font-medium"
+                      >
+                        <option value="">Select a Component...</option>
+                        <option value="MAT-001">MAT-001 — Microcontroller Chip X2</option>
+                        <option value="MAT-002">MAT-002 — Automotive Sensor Array S1</option>
+                        <option value="MAT-003">MAT-003 — Copper Cable Harness H5</option>
+                      </select>
+                    )}
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Facility ID (optional)</label>
-                    <input 
-                      type="text"
-                      value={inventoryForm.facility_id}
-                      onChange={(e) => setInventoryForm({...inventoryForm, facility_id: e.target.value})}
-                      className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
-                      placeholder="e.g. FAC-DE-02"
-                    />
+                    <label className="block font-semibold text-slate-500 uppercase tracking-wide mb-1">Facility (Optional)</label>
+                    {facilities && facilities.length > 0 ? (
+                      <select 
+                        value={inventoryForm.facility_id}
+                        onChange={(e) => setInventoryForm({...inventoryForm, facility_id: e.target.value})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                      >
+                        <option value="">(None / Unassigned)</option>
+                        {facilities.map((f: any) => (
+                          <option key={f.id} value={f.id}>
+                            {f.id} — {f.name} ({f.location})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input 
+                        type="text"
+                        value={inventoryForm.facility_id}
+                        onChange={(e) => setInventoryForm({...inventoryForm, facility_id: e.target.value})}
+                        className="w-full rounded border border-slate-300 px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-slate-950 bg-white"
+                        placeholder="Leave blank or register facility first"
+                      />
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
